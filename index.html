@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="songs/失恋後/サムネイル.png">
 <link rel="apple-touch-icon" href="songs/失恋後/サムネイル.png">
 <title>失恋後 VSRG — 超軽量 音ゲー</title>
-<link rel="stylesheet" href="css/style.css?v=11">
+<link rel="stylesheet" href="css/style.css?v=12">
 </head>
 <body>
 <div id="bgBlur" aria-hidden="true"></div>
@@ -54,7 +54,7 @@
           </div>
         </div>
         <input id="rateSlider" type="range" min="0.5" max="3" step="0.1" value="1">
-        <div class="hint">0.5x – 3.0x（0.1刻み）· 音源も一緒に加速</div>
+        <div class="hint">0.5x – 3.0x（0.1刻み）· 音源も一緒に加速。スクロール速度は変わらず、ノーツの<b>密度</b>が変わる</div>
       </div>
 
       <div class="panel glass quick">
@@ -80,7 +80,10 @@
         <div id="hudScore">0</div>
         <div id="hudAcc">100.00%</div>
       </div>
-      <div class="hud-center"><div id="hudSong">失恋後 [Easy] 1.0x</div></div>
+      <div class="hud-center">
+        <div id="hudSong">失恋後 [Easy] 1.0x</div>
+        <div id="hudKeys">D F J K</div>
+      </div>
       <div class="hud-right">
         <button id="btnPause" class="icon-btn sm" aria-label="一時停止">⏸</button>
       </div>
@@ -176,6 +179,6 @@
 
   <div id="toast" class="hidden"></div>
 </div>
-<script src="js/app.js?v=11"></script>
+<script src="js/app.js?v=12"></script>
 </body>
 </html>

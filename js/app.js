@@ -22,7 +22,9 @@ let SONGS=[], song=null, diffIdx=S.lastDiff|0;
 let chartCache={}, audioCache={}; // file->chart, songId->AudioBuffer
 let chart=null, lanes=[[],[],[],[]], ptr=[0,0,0,0];
 let totalJud=0, judged=0, counts={p:0,gr:0,go:0,me:0,mi:0}, combo=0, maxCombo=0;
-let state='select', rate=1, approach=750, lastT=0;
+let state='select', rate=1, approach=750, approachC=750, lastT=0;
+/* approach   = 実時間(ms)でノーツがフィールドを渡りきる時間。SCROLLのみで決まり倍率(rate)に依存しない
+   approachC  = 譜面時間(ms)に換算した同じ幅 = approach*rate。倍率を上げると1画面に乗るノーツが増える=密度が上がる */
 let songMs=-99999, startCtx=0, leadSec=2;
 let hold=[null,null,null,null], laneCnt=[0,0,0,0], laneLit=[0,0,0,0];
 let judgePop={t:-1,txt:'',col:'#fff',early:''};
@@ -144,7 +146,7 @@ function resize(){
   const base=Math.min(W*0.94, 480);
   fieldW=Math.min(base*(S.laneW/100), W*0.98);
   fieldX=(W-fieldW)/2; laneWpx=fieldW/4;
-  judgeY=H*(S.judgePos/100); topY=64;
+  judgeY=H*(S.judgePos/100); topY=0; // 画面上端までノーツを描く（上部に遮蔽物を置かない）
   noteR=clamp(laneWpx*0.5*(S.noteSize/100),10,laneWpx*0.65); // 100% = diameter fits lane
   buildSprites();
 }
@@ -172,7 +174,8 @@ window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.remove('hidden'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.add('hidden'),2200); }
-function show(id){ for(const s of ['screenSelect','screenGame','screenResult'])$(s).classList.toggle('active',s===id); }
+function show(id){ for(const s of ['screenSelect','screenGame','screenResult'])$(s).classList.toggle('active',s===id);
+  document.body.classList.toggle('playing',id==='screenGame'); }
 
 async function ensureChart(d){
   const f=song.diffs[d].file;
@@ -200,15 +203,20 @@ const accNow=()=>{ const w=counts.p*300+counts.gr*200+counts.go*100+counts.me*50
   return judged?w/(300*judged)*100:100; };
 function gradeFor(a){ if(a>=100-1e-9)return 'SS'; if(a>95)return 'S'; if(a>90)return 'A'; if(a>80)return 'B'; if(a>70)return 'C'; return 'D'; }
 
+function applyScroll(){
+  approach=15000/clamp(S.scroll,5,35); // 実時間(ms)での移動時間 — 倍率を変えても不変
+  approachC=approach*rate;
+}
 async function startPlay(){
   if(state==='loading'||state==='ready')return;
   stopPreview();
+  $('settingsModal').classList.add('hidden');
   if(!await ensureCtx())return;
   state='loading'; $('btnStart').disabled=true; $('loadStatus').textContent='読み込み中…';
   paused=false; finished=false;
   try{
     rate=Math.round(S.rate*10)/10;
-    approach=15000/clamp(S.scroll,5,35);
+    applyScroll();
     chart=await ensureChart(diffIdx);
     buildLanes();
     $('loadStatus').textContent='音源デコード中…';
@@ -320,7 +328,9 @@ function togglePause(force){
 
 /* ============ UPDATE + RENDER LOOP ============ */
 let lastFrame=0;
-function yFor(t){ return judgeY-((t-songMs)/approach)*(judgeY-topY); }
+function yFor(t){ return judgeY-((t-songMs)/approachC)*(judgeY-topY); }
+function noteAlpha(dHead){ return clamp((approachC-dHead)/(approachC*0.1),0.35,1); } // 上端で短くフェードイン
+function belowAlpha(y){ return y>judgeY?clamp(1-(y-judgeY)/280,0.55,1):1; } // 判定ライン通過後は少し薄く
 function loop(now){
   if(state!=='playing')return;
   if(paused)return;
@@ -397,15 +407,14 @@ function draw(now){
       const n=arr[i];
       if(n.hs!==0&&!(n.ln&&n===h)) { if(n.t-songMs<-300)continue; }
       const dHead=n.t-songMs;
-      if(dHead>approach+250)break;
+      if(dHead>approachC+250)break;
       if(n.hs!==0)continue; // 判定済みheadは描かない(hold除く→上で描画)
-      const hy=judgeY-(dHead/approach)*span;
+      const hy=judgeY-(dHead/approachC)*span;
       if(hy>judgeY+120)continue;
-      if(hy<-80&&(!n.ln||yFor(n.e)<-80))continue;
+      if(hy<-noteR*2&&(!n.ln||yFor(n.e)<-noteR*2))continue;
       if(n.ln){
-        const ty=judgeY-((n.e-songMs)/approach)*span, r=bodyW/2;
-        const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
-        ctx.globalAlpha=clamp(a,0,1);
+        const ty=judgeY-((n.e-songMs)/approachC)*span, r=bodyW/2;
+        ctx.globalAlpha=noteAlpha(dHead);
         ctx.fillStyle=hexA(LN_COL,0.45);
         const y1=clamp(Math.max(hy,ty),-60,H+60);
         ctx.beginPath();
@@ -413,12 +422,12 @@ function draw(now){
         else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
         ctx.fill();
         ctx.fillStyle=LN_HEAD;
+        ctx.globalAlpha=noteAlpha(dHead)*belowAlpha(hy);
         ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
         ctx.globalAlpha=1;
       }
       else {
-        const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
-        ctx.globalAlpha=clamp(a,0,1);
+        ctx.globalAlpha=noteAlpha(dHead)*belowAlpha(hy);
         drawSprite(sprites[l],x,hy);
         ctx.globalAlpha=1;
       }
@@ -451,10 +460,7 @@ function draw(now){
     ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fillText(combo,fieldX+fieldW/2,judgeY-span*0.34+52);
     ctx.font='700 10px system-ui,sans-serif'; ctx.fillStyle='rgba(154,163,199,.9)'; ctx.fillText('COMBO',fieldX+fieldW/2,judgeY-span*0.34+66);
   }
-  // key hints
-  ctx.font='700 13px system-ui,sans-serif'; ctx.textAlign='center';
-  for(let l=0;l<4;l++){ ctx.fillStyle='rgba(154,163,199,.8)';
-    ctx.fillText(shortKey(S.keys[l]),fieldX+l*laneWpx+laneWpx/2,H-14); }
+  // キー表示は下部HUD(#hudKeys)へ移動 — 画面上部はノーツ専用に
 }
 function drawSprite(sp,x,y){
   const w=sp.c.width, h=sp.c.height, sc=noteR/sp.R; // コア半径が正確にnoteRになる
@@ -553,9 +559,10 @@ function renderKeys(){
   S.keys.forEach((k,i)=>{ const d=document.createElement('div');
     d.className='key-cap'+(listenKey===i?' listening':''); d.textContent=listenKey===i?'押して…':shortKey(k);
     d.onclick=()=>{ listenKey=i; renderKeys(); }; r.appendChild(d); });
-  $('keysHint').textContent=S.keys.map(shortKey).join(' ');
+  const kt=S.keys.map(shortKey).join(' ');
+  $('keysHint').textContent=kt; $('hudKeys').textContent=kt;
 }
-function setRate(v){ S.rate=clamp(Math.round(v*10)/10,0.5,3); rate=S.rate; save(); syncSettingsUI(); refreshSongInfo(); }
+function setRate(v){ S.rate=clamp(Math.round(v*10)/10,0.5,3); rate=S.rate; applyScroll(); save(); syncSettingsUI(); refreshSongInfo(); }
 
 /* ============ INIT ============ */
 async function init(){
@@ -584,7 +591,7 @@ async function init(){
   $('btnRestart').onclick=()=>{ paused=false; $('pauseMenu').classList.add('hidden');
     if(AC&&AC.state==='suspended')AC.resume(); stopAudio(); state='select'; startPlay(); };
   $('btnQuit').onclick=quitToSelect;
-  $('pScroll').oninput=e=>{S.scroll=+e.target.value;approach=15000/S.scroll;save();syncSettingsUI();};
+  $('pScroll').oninput=e=>{S.scroll=+e.target.value;applyScroll();save();syncSettingsUI();};
   $('pOffset').oninput=e=>{S.offset=+e.target.value;save();syncSettingsUI();};
   // result
   $('btnRetry').onclick=()=>{ state='select'; startPlay(); };
@@ -594,7 +601,7 @@ async function init(){
   $('btnSettingsTop').onclick=()=>{M.classList.remove('hidden');};
   $('btnCloseSettings').onclick=()=>M.classList.add('hidden');
   M.addEventListener('click',e=>{ if(e.target===M)M.classList.add('hidden'); });
-  $('sScroll').oninput=e=>{S.scroll=+e.target.value;approach=15000/S.scroll;save();syncSettingsUI();};
+  $('sScroll').oninput=e=>{S.scroll=+e.target.value;applyScroll();save();syncSettingsUI();};
   $('sOffset').oninput=e=>{S.offset=+e.target.value;save();syncSettingsUI();};
   $('sRate').oninput=e=>setRate(parseFloat(e.target.value));
   $('sLane').oninput=e=>{S.laneW=+e.target.value;save();syncSettingsUI();resize();};
@@ -603,7 +610,7 @@ async function init(){
   $('sTap').onchange=e=>{S.tap=e.target.checked;save();syncSettingsUI();};
   $('sTapVol').oninput=e=>{S.tapVol=+e.target.value;save();syncSettingsUI();playTap();};
   $('sBgm').oninput=e=>{S.bgm=+e.target.value;if(bgmGain)bgmGain.gain.value=S.bgm/100;save();syncSettingsUI();};
-  $('btnResetSettings').onclick=()=>{ S={...DEF,lastDiff:diffIdx}; save(); rate=S.rate; approach=15000/S.scroll; syncSettingsUI(); resize(); refreshSongInfo(); toast('設定をリセットしました'); };
+  $('btnResetSettings').onclick=()=>{ S={...DEF,lastDiff:diffIdx}; save(); rate=S.rate; applyScroll(); syncSettingsUI(); resize(); refreshSongInfo(); toast('設定をリセットしました'); };
   // 音源プリフェッチ（初回タップで裏読み→開始高速化）
   const pre=()=>{ window.removeEventListener('pointerdown',pre); if(state==='select')startPreview(); };
   window.addEventListener('pointerdown',pre);
