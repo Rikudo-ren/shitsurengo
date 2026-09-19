@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05060d">
+<meta name="description" content="失恋後 — 依存ゼロの超軽量スタイリッシュ VSRG（osu!mania 譜面対応）">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>失恋後 — VSRG</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305060d'/%3E%3Crect x='5' y='17' width='4' height='10' rx='1.5' fill='%2322d3ee'/%3E%3Crect x='11' y='9' width='4' height='18' rx='1.5' fill='%23f472b6'/%3E%3Crect x='17' y='13' width='4' height='14' rx='1.5' fill='%23a78bfa'/%3E%3Crect x='23' y='6' width='4' height='21' rx='1.5' fill='%2322d3ee'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ タイトル ============ -->
+  <section class="screen" id="screen-title">
+    <div class="title-bg"></div>
+    <div class="title-wrap">
+      <div class="logo-kicker">ULTRA LIGHT · STYLISH · VSRG</div>
+      <h1 class="logo">失恋後</h1>
+      <div class="logo-en">SHITSURENGO</div>
+      <div class="title-btns">
+        <button class="btn btn-primary btn-lg" id="btn-to-select">曲選択</button>
+        <button class="btn btn-lg" id="btn-title-settings">設定</button>
+      </div>
+      <div class="title-meta" id="title-meta">osu!mania 譜面 (.osu) 対応 / スコア上限 1,000,000</div>
+    </div>
+  </section>
+
+  <!-- ============ 曲選択 ============ -->
+  <section class="screen" id="screen-select">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-select-back" aria-label="戻る">‹</button>
+      <div class="topbar-title">SELECT MUSIC</div>
+      <button class="icon-btn" id="btn-select-settings" aria-label="設定">⚙</button>
+    </header>
+    <div class="select-body">
+      <aside class="song-list" id="song-list"></aside>
+      <main class="song-panel" id="song-panel">
+        <div class="song-bg" id="song-bg"></div>
+        <div class="song-head">
+          <img class="song-cover" id="song-cover" alt="" loading="lazy">
+          <div class="song-meta">
+            <div class="song-title" id="song-title">—</div>
+            <div class="song-artist" id="song-artist">—</div>
+            <div class="song-extra" id="song-extra"></div>
+          </div>
+        </div>
+        <div class="diff-list" id="diff-list"></div>
+        <div class="play-options">
+          <div class="opt">
+            <div class="opt-label">演奏速度 <span class="opt-hint">音源も一緒に加減速</span></div>
+            <div class="opt-ctl">
+              <button class="step-btn" id="rate-down" aria-label="遅く">−</button>
+              <output class="opt-value wide" id="rate-value">1.0x</output>
+              <button class="step-btn" id="rate-up" aria-label="速く">＋</button>
+              <input class="slider" type="range" id="rate-slider" min="0.5" max="3" step="0.1" value="1">
+            </div>
+          </div>
+          <div class="opt">
+            <div class="opt-label">スクロール速度</div>
+            <div class="opt-ctl">
+              <button class="step-btn" id="scroll-down" aria-label="遅く">−</button>
+              <output class="opt-value" id="scroll-value">10.0</output>
+              <button class="step-btn" id="scroll-up" aria-label="速く">＋</button>
+              <input class="slider" type="range" id="scroll-slider" min="1" max="30" step="0.5" value="10">
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-start" id="btn-start">START</button>
+        <div class="select-note" id="select-note"></div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ============ プレイ ============ -->
+  <section class="screen" id="screen-game">
+    <div class="stage" id="stage">
+      <canvas id="playfield"></canvas>
+    </div>
+    <div class="hud">
+      <div class="hud-top">
+        <div class="hud-block hud-left">
+          <span class="hud-lbl">SCORE</span>
+          <span class="hud-score" id="hud-score">0000000</span>
+        </div>
+        <div class="hud-block hud-mid">
+          <span class="hud-diff" id="hud-diff"></span>
+          <span class="hud-rate" id="hud-rate"></span>
+        </div>
+        <div class="hud-block hud-right">
+          <span class="hud-lbl">ACCURACY</span>
+          <span class="hud-acc" id="hud-acc">100.00%</span>
+        </div>
+      </div>
+      <div class="hud-progress"><div class="hud-progress-bar" id="hud-progress"></div></div>
+      <div class="hud-time" id="hud-time">0:00 / 0:00</div>
+      <div class="hud-combo-wrap hidden" id="hud-combo-wrap">
+        <div class="hud-combo" id="hud-combo">0</div>
+        <div class="hud-combo-lbl">COMBO</div>
+      </div>
+      <div class="hud-judge hidden" id="hud-judge"></div>
+      <div class="hud-countdown hidden" id="hud-countdown"></div>
+      <div class="hud-fps hidden" id="hud-fps"></div>
+      <div class="hud-badge hidden" id="hud-silent">音源なし · 無音モード</div>
+      <button class="pause-btn" id="btn-pause" aria-label="ポーズ">❚❚</button>
+    </div>
+
+    <div class="overlay hidden" id="pause-overlay">
+      <div class="panel panel-sm">
+        <h2 class="panel-title">PAUSED</h2>
+        <div class="panel-info" id="pause-info"></div>
+        <button class="btn btn-primary" id="btn-resume">再開</button>
+        <button class="btn" id="btn-retry">やり直す</button>
+        <button class="btn" id="btn-pause-settings">設定</button>
+        <button class="btn btn-ghost" id="btn-quit">曲選択に戻る</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loading-text">読み込み中…</div>
+    </div>
+  </section>
+
+  <!-- ============ 結果 ============ -->
+  <section class="screen" id="screen-result">
+    <div class="result-wrap">
+      <div class="result-head">
+        <div class="result-song">
+          <div class="result-title" id="res-title">失恋後</div>
+          <div class="result-sub" id="res-sub">Easy · 1.0x</div>
+        </div>
+        <div class="result-rank" id="res-rank">SS</div>
+      </div>
+      <div class="result-main">
+        <div class="result-score-block">
+          <div class="hud-lbl">SCORE</div>
+          <div class="result-score" id="res-score">0000000</div>
+          <div class="result-acc" id="res-acc">100.00%</div>
+          <div class="result-combo" id="res-combo">MAX COMBO 0</div>
+          <div class="result-badge hidden" id="res-badge">NEW RECORD</div>
+        </div>
+        <div class="result-counts" id="res-counts"></div>
+      </div>
+      <div class="result-foot">
+        <div class="result-error" id="res-error"></div>
+        <div class="result-btns">
+          <button class="btn" id="btn-res-autooffset">オフセット自動補正</button>
+          <button class="btn btn-primary" id="btn-res-retry">もう一度</button>
+          <button class="btn btn-ghost" id="btn-res-back">曲選択</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 設定モーダル ============ -->
+  <div class="modal hidden" id="settings-modal">
+    <div class="panel panel-settings">
+      <div class="panel-bar">
+        <h2 class="panel-title">SETTINGS</h2>
+        <button class="icon-btn" id="btn-settings-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="panel-scroll">
+
+        <div class="set-group">
+          <div class="set-group-title">プレイ</div>
+          <div class="set-row">
+            <label for="set-scroll">スクロール速度<span class="set-hint">大きいほどノーツが速く流れる</span></label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-scroll" min="1" max="30" step="0.5">
+              <output id="set-scroll-val">10.0</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-offset">判定オフセット<span class="set-hint">＋で判定を後ろに / −で前に（ms）</span></label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-offset" min="-200" max="200" step="1">
+              <output id="set-offset-val">0 ms</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-rate">演奏速度<span class="set-hint">0.5x 〜 3.0x（音源も加減速）</span></label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-rate" min="0.5" max="3" step="0.1">
+              <output id="set-rate-val">1.0x</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-mirror">ミラー<span class="set-hint">レーンを左右反転</span></label>
+            <div class="set-ctl"><button class="toggle" id="set-mirror" role="switch"></button></div>
+          </div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-group-title">サウンド</div>
+          <div class="set-row">
+            <label for="set-master">マスター音量</label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-master" min="0" max="1" step="0.01">
+              <output id="set-master-val">85%</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-music">音源音量</label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-music" min="0" max="1" step="0.01">
+              <output id="set-music-val">100%</output>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-sfx">タップエフェクト音</label>
+            <div class="set-ctl"><button class="toggle" id="set-sfx" role="switch"></button></div>
+          </div>
+          <div class="set-row">
+            <label>タップ音の種類</label>
+            <div class="set-ctl">
+              <div class="seg" id="set-sfx-type">
+                <button data-v="click">Click</button>
+                <button data-v="pop">Pop</button>
+              </div>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-sfxvol">タップ音量</label>
+            <div class="set-ctl">
+              <input class="slider" type="range" id="set-sfxvol" min="0" max="1" step="0.01">
+              <output id="set-sfxvol-val">60%</output>
+              <button class="btn btn-xs" id="btn-sfx-test">試聴</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-group-title">表示 / パフォーマンス</div>
+          <div class="set-row">
+            <label>エフェクト品質<span class="set-hint">低にすると重い端末でも快適</span></label>
+            <div class="set-ctl">
+              <div class="seg" id="set-quality">
+                <button data-v="high">高</button>
+                <button data-v="low">低</button>
+              </div>
+            </div>
+          </div>
+          <div class="set-row">
+            <label for="set-judgetext">判定テキスト表示</label>
+            <div class="set-ctl"><button class="toggle" id="set-judgetext" role="switch"></button></div>
+          </div>
+          <div class="set-row">
+            <label for="set-fps">FPS 表示</label>
+            <div class="set-ctl"><button class="toggle" id="set-fps" role="switch"></button></div>
+          </div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-group-title">キー設定 <span class="set-hint" id="keybind-hint">4K</span></div>
+          <div class="keybinds" id="keybinds"></div>
+          <div class="set-row">
+            <label>判定窓<span class="set-hint">osu!mania 準拠の Accuracy 計算</span></label>
+            <div class="set-ctl windows" id="set-windows"></div>
+          </div>
+        </div>
+
+        <div class="set-group">
+          <button class="btn btn-ghost btn-wide" id="btn-reset-settings">設定を初期化</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "id": "shitsurengo",
+  "title": "失恋後",
+  "titleUnicode": "失恋後",
+  "artist": "Unknown Artist",
+  "artistUnicode": "Unknown Artist",
+  "creator": "Mapperatorinator",
+  "audio": "失恋後.mp3",
+  "thumbnail": "thumb.webp",
+  "thumbnailSmall": "thumb_s.webp",
+  "background": "bg.webp",
+  "difficulties": [
+    { "file": "easy.osu", "name": "Easy", "stars": 5, "order": 1 },
+    { "file": "normal.osu", "name": "Normal", "stars": 9, "order": 2 },
+    { "file": "hard.osu", "name": "Hard", "stars": 11, "order": 3 }
+  ]
+}

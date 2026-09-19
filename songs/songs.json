@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-19T09:22:09.734Z",
+  "songs": [
+    {
+      "id": "shitsurengo",
+      "folder": "失恋後",
+      "title": "失恋後",
+      "titleUnicode": "失恋後",
+      "artist": "Unknown Artist",
+      "artistUnicode": "Unknown Artist",
+      "creator": "Mapperatorinator",
+      "source": "",
+      "audio": "失恋後.mp3",
+      "audioOk": false,
+      "audioSize": 2,
+      "thumbnail": "thumb.webp",
+      "thumbnailSmall": "thumb_s.webp",
+      "background": "bg.webp",
+      "difficulties": [
+        {
+          "file": "easy.osu",
+          "name": "Easy",
+          "stars": 5,
+          "keys": 4,
+          "objects": 643,
+          "ln": 36,
+          "nps": 3.78,
+          "bpm": 168,
+          "lengthMs": 171160
+        },
+        {
+          "file": "normal.osu",
+          "name": "Normal",
+          "stars": 9,
+          "keys": 4,
+          "objects": 1683,
+          "ln": 16,
+          "nps": 9.87,
+          "bpm": 168,
+          "lengthMs": 171133
+        },
+        {
+          "file": "hard.osu",
+          "name": "Hard",
+          "stars": 11,
+          "keys": 4,
+          "objects": 1886,
+          "ln": 138,
+          "nps": 11.05,
+          "bpm": 168,
+          "lengthMs": 171190
+        }
+      ]
+    }
+  ]
+}

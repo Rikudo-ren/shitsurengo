@@ -1,0 +1,15 @@
+{
+  "name": "shitsurengo-vsrg",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "失恋後 — 依存ゼロの超軽量スタイリッシュ VSRG（osu!mania 譜面対応）",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "songs": "node tools/build-songs.js",
+    "test": "node tools/test-judge.js"
+  },
+  "keywords": ["vsrg", "rhythm-game", "osu", "mania", "canvas"],
+  "license": "MIT"
+}
