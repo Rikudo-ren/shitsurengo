@@ -90,7 +90,12 @@ function startAudio(){
   startCtx=AC.currentTime+leadSec; srcNode.start(startCtx);
 }
 function stopAudio(){ if(srcNode){ try{srcNode.onended=null;srcNode.stop();}catch(e){} try{srcNode.disconnect();}catch(e){} srcNode=null; } }
-function rawSongMs(){ if(!AC||!srcNode)return -leadSec*1000; return (AC.currentTime-startCtx)*rate*1000+S.offset; }
+// offset は機器遅延を補正する実時間(ms)。譜面時間へは経過時間と一緒に倍率変換する。
+// + は譜面時計を進める（ノーツの到達・判定タイミングを早める）。
+function rawSongMs(){
+  const elapsedMs=AC&&srcNode?(AC.currentTime-startCtx)*1000:-leadSec*1000;
+  return (elapsedMs+S.offset)*rate;
+}
 
 /* ============ OSU PARSER (mania) ============ */
 function parseOsu(text){
@@ -273,15 +278,16 @@ function applyHit(j,dt){
 function press(lane){
   laneCnt[lane]++; laneLit[lane]=1; playTap();
   if(state!=='playing'||paused)return;
+  const inputMs=rawSongMs(); // 前フレームの描画時刻ではなく入力時点の音源時計
   const arr=lanes[lane]; let cand=null;
   for(let i=ptr[lane]; i<arr.length && i<ptr[lane]+6; i++){
     const n=arr[i]; if(n.hs!==0)continue;
-    const dt=songMs-n.t;
+    const dt=inputMs-n.t;
     if(dt<-W_ME)break; if(dt>W_ME)continue;
     cand=n; break;
   }
   if(!cand)return; // ghost: ペナルティなし
-  const dt=songMs-cand.t, j=judgeOf(Math.abs(dt));
+  const dt=inputMs-cand.t, j=judgeOf(Math.abs(dt));
   cand.hs=1; applyHit(j,dt);
   if(cand.ln&&j!==4)hold[lane]=cand;
   else if(cand.ln&&j===4){ cand.ts=2; counts.mi++; judged++; combo=0; }
@@ -291,7 +297,7 @@ function release(lane){
   laneCnt[lane]=Math.max(0,laneCnt[lane]-1);
   if(state!=='playing'||paused)return;
   const n=hold[lane]; if(!n)return;
-  const dt=songMs-n.e;
+  const dt=rawSongMs()-n.e;
   if(dt<-W_ME){ n.ts=2; counts.mi++; judged++; combo=0;
     judgePop={t:performance.now(),txt:'MISS',col:JC[4],early:'EARLY RELEASE'}; }
   else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt); }
