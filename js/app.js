@@ -1,4 +1,4 @@
-/* VSRG lite — ultra lightweight 4K VSRG engine (vanilla, no deps) */
+/* VSRG lite — ultra lightweight 4K VSRG engine (vanilla, no deps) — low latency */
 'use strict';
 const $ = id => document.getElementById(id);
 const clamp = (v,a,b)=>v<a?a:v>b?b:v;
@@ -14,17 +14,15 @@ function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.se
 
 /* ============ JUDGE WINDOWS (fixed) ============ */
 const W_P=34, W_GR=67, W_GO=97, W_ME=122;
-const JC=['#00e5ff','#5dff8f','#ffd54a','#ff9a3d','#ff4d6d']; // P Gr Go Meh Miss
+const JC=['#00e5ff','#5dff8f','#ffd54a','#ff9a3d','#ff4d6d'];
 const JN=['PERFECT','GREAT','GOOD','MEH','MISS'];
 
 /* ============ STATE ============ */
 let SONGS=[], song=null, diffIdx=S.lastDiff|0;
-let chartCache={}, audioCache={}; // file->chart, songId->AudioBuffer
+let chartCache={}, audioCache={};
 let chart=null, lanes=[[],[],[],[]], ptr=[0,0,0,0];
 let totalJud=0, judged=0, counts={p:0,gr:0,go:0,me:0,mi:0}, combo=0, maxCombo=0;
 let state='select', rate=1, approach=750, approachC=750, lastT=0;
-/* approach   = 実時間(ms)でノーツがフィールドを渡りきる時間。SCROLLのみで決まり倍率(rate)に依存しない
-   approachC  = 譜面時間(ms)に換算した同じ幅 = approach*rate。倍率を上げると1画面に乗るノーツが増える=密度が上がる */
 let songMs=-99999, startCtx=0, leadSec=2;
 let hold=[null,null,null,null], laneCnt=[0,0,0,0], laneLit=[0,0,0,0];
 let judgePop={t:-1,txt:'',col:'#fff',early:''};
@@ -32,34 +30,8 @@ let paused=false, finished=false;
 let lastHUD={s:'',a:'',p:-1};
 let tpIdx=0;
 
-/* ============ AUDIO — low latency ============ */
+/* ============ AUDIO — low latency (no asset files) ============ */
 let AC=null, bgmGain=null, clickBuf=null;
-let tapAssetTried=false;
-function synthClick(){
-  // 60ms decaying blip+noise — zero assets, instant, lowest latency
-  const sr=AC.sampleRate, n=Math.floor(sr*0.06);
-  const buf=AC.createBuffer(1,n,sr); const d=buf.getChannelData(0);
-  for(let i=0;i<n;i++){ const t=i/sr, k=Math.exp(-t*90);
-    d[i]=(Math.sin(2*Math.PI*(1900-900*t*20)*t)*0.7+(Math.random()*2-1)*0.25)*k*0.9; }
-  return buf;
-}
-async function tryLoadTapAsset(){
-  if(tapAssetTried||!AC) return;
-  tapAssetTried=true;
-  const candidates=['assets/tap.wav','assets/tap.mp3','assets/hit.wav','assets/hit.mp3'];
-  for(const url of candidates){
-    try{
-      const r=await fetch(url,{cache:'force-cache'}); if(!r.ok) continue;
-      const ab=await r.arrayBuffer(); if(ab.byteLength<100) continue;
-      const decoded=await AC.decodeAudioData(ab.slice(0));
-      if(decoded&&decoded.length>0){
-        clickBuf=decoded;
-        // console.log('[VSRG] tap asset loaded', url, 'len', decoded.length);
-        break;
-      }
-    }catch(e){ /* try next */ }
-  }
-}
 async function ensureCtx(){
   if(!AC){
     const C=window.AudioContext||window.webkitAudioContext; if(!C){toast('WebAudio非対応のブラウザです');return false;}
@@ -69,28 +41,25 @@ async function ensureCtx(){
       try{ AC=new C({latencyHint:'interactive'}); }catch(e2){ AC=new C(); }
     }
     bgmGain=AC.createGain(); bgmGain.connect(AC.destination); bgmGain.gain.value=S.bgm/100;
-    clickBuf=synthClick();
-    // try to replace with file-based tap if present (osu! style) — non-blocking
-    tryLoadTapAsset();
+    // synthesize tap click (60ms decaying blip+noise) — zero assets, lowest latency
+    const sr=AC.sampleRate, n=Math.floor(sr*0.06);
+    clickBuf=AC.createBuffer(1,n,sr); const d=clickBuf.getChannelData(0);
+    for(let i=0;i<n;i++){ const t=i/sr, k=Math.exp(-t*90);
+      d[i]=(Math.sin(2*Math.PI*(1900-900*t*20)*t)*0.7+(Math.random()*2-1)*0.25)*k*0.9; }
   }
   if(AC.state==='suspended'){ try{await AC.resume();}catch(e){} }
-  // iOS / Chrome: ensure resume on next tick as well
-  if(AC.state!=='running'){
-    try{ AC.resume(); }catch(e){}
-  }
+  if(AC.state!=='running'){ try{ AC.resume(); }catch(e){} }
   return true;
 }
 function playTap(){
   if(!S.tap||!AC||!clickBuf) return;
-  // resume immediately if suspended — don't wait
   if(AC.state==='suspended'){ try{AC.resume();}catch(e){} }
   if(AC.state!=='running'&&AC.state!=='suspended') return;
   try{
     const src=AC.createBufferSource(); src.buffer=clickBuf;
     const g=AC.createGain(); g.gain.value=(S.tapVol/100)*0.9;
     src.connect(g); g.connect(AC.destination);
-    // start at currentTime for minimal latency (0 = immediate)
-    src.start(AC.currentTime);
+    src.start(AC.currentTime); // immediate, minimal latency
   }catch(e){}
 }
 let srcNode=null, audioBuf=null;
@@ -128,8 +97,6 @@ function startAudio(){
   startCtx=AC.currentTime+leadSec; srcNode.start(startCtx);
 }
 function stopAudio(){ if(srcNode){ try{srcNode.onended=null;srcNode.stop();}catch(e){} try{srcNode.disconnect();}catch(e){} srcNode=null; } }
-// offset は機器遅延を補正する実時間(ms)。譜面時間へは経過時間と一緒に倍率変換する。
-// + は譜面時計を進める（ノーツの到達・判定タイミングを早める）。
 function rawSongMs(){
   const elapsedMs=AC&&srcNode?(AC.currentTime-startCtx)*1000:-leadSec*1000;
   return (elapsedMs+S.offset)*rate;
@@ -175,16 +142,15 @@ function parseOsu(text){
   return {keys,audio,title,artist,ver,od,tps,notes};
 }
 
-/* ============ CANVAS / LAYOUT — low latency + asset support ============ */
+/* ============ CANVAS / LAYOUT — low latency ============ */
 const cv=$('cv');
 let ctx;
 try{ ctx=cv.getContext('2d',{alpha:true, desynchronized:true}); }catch(e){ ctx=cv.getContext('2d',{alpha:true}); }
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
 let sprites=[];
-let noteAsset=null, noteLnAsset=null, noteAssetReady=false;
-const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
-const LN_COL='#a9aebf'; // long-note gray
-const LN_HEAD='#d8dce8'; // LN head: flat, brighter than band
+const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff'];
+const LN_COL='#a9aebf';
+const LN_HEAD='#d8dce8';
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2);
   const r=cv.getBoundingClientRect(); W=Math.max(50,r.width||innerWidth); H=Math.max(50,r.height||innerHeight);
@@ -192,8 +158,8 @@ function resize(){
   const base=Math.min(W*0.94, 480);
   fieldW=Math.min(base*(S.laneW/100), W*0.98);
   fieldX=(W-fieldW)/2; laneWpx=fieldW/4;
-  judgeY=H*(S.judgePos/100); topY=0; // 画面上端までノーツを描く（上部に遮蔽物を置かない）
-  noteR=clamp(laneWpx*0.5*(S.noteSize/100),10,laneWpx*0.65); // 100% = diameter fits lane
+  judgeY=H*(S.judgePos/100); topY=0;
+  noteR=clamp(laneWpx*0.5*(S.noteSize/100),10,laneWpx*0.65);
   buildSprites();
 }
 function circleSprite(color,ring,mid,edge,stroke){
@@ -214,58 +180,8 @@ function circleSprite(color,ring,mid,edge,stroke){
   }
   return {c, R};
 }
-function imageSprite(img, fallbackColor){
-  const pad=noteR*0.5, d=Math.ceil((noteR*2+pad*2)*2);
-  const c=document.createElement('canvas'); c.width=c.height=d;
-  const g=c.getContext('2d');
-  const size=noteR*2;
-  // draw with slight glow if image has alpha
-  try{
-    g.shadowColor=fallbackColor||'#ffffff';
-    g.shadowBlur=noteR*0.6;
-    g.drawImage(img, d/2-size/2, d/2-size/2, size, size);
-    g.shadowBlur=0;
-    // core
-    g.globalAlpha=1;
-    g.drawImage(img, d/2-size/2, d/2-size/2, size, size);
-  }catch(e){
-    return circleSprite(fallbackColor||'#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)');
-  }
-  return {c, R:noteR};
-}
-let lnSprites=[];
-function buildSprites(){
-  sprites=[]; lnSprites=[];
-  for(let i=0;i<4;i++){
-    if(noteAsset){
-      sprites.push(imageSprite(noteAsset,'#ffffff'));
-    }else{
-      sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)'));
-    }
-    if(noteLnAsset){
-      lnSprites.push(imageSprite(noteLnAsset,'#a9aebf'));
-    }else{
-      // LN headは少し暗めのフラット円
-      const pad=noteR*0.2, d=Math.ceil((noteR*2+pad*2)*2);
-      const c=document.createElement('canvas'); c.width=c.height=d;
-      const g=c.getContext('2d'), cx=d/2, cy=d/2, R=noteR;
-      g.fillStyle=LN_HEAD; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
-      lnSprites.push({c,R});
-    }
-  }
-}
-function loadNoteAssets(){
-  const tryLoad=(src, cb)=>{
-    const img=new Image();
-    img.decoding='async';
-    img.onload=()=>{ cb(img); };
-    img.onerror=()=>{};
-    img.src=src+'?v=13'; // バージョン付きでキャッシュ、無ければ即フォールバック
-  };
-  // 存在すれば使う（osu!スキン方式）。無くても合成スプライトで動作するので遅延は増えない
-  tryLoad('assets/note.png', img=>{ noteAsset=img; noteAssetReady=true; buildSprites(); });
-  tryLoad('assets/note_ln.png', img=>{ noteLnAsset=img; buildSprites(); });
-}
+function buildSprites(){ sprites=[];
+  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); } }
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -278,7 +194,7 @@ async function ensureChart(d){
   if(chartCache[f])return chartCache[f];
   const r=await fetch(f); if(!r.ok)throw new Error('譜面読込失敗 '+r.status);
   const ch=parseOsu(await r.text());
-  if(ch.keys!==4){ // 4K以外は4Kへ丸め
+  if(ch.keys!==4){
     for(const n of ch.notes)n.lane=clamp(Math.floor(n.lane*4/ch.keys),0,3);
     ch.keys=4;
   }
@@ -300,7 +216,7 @@ const accNow=()=>{ const w=counts.p*300+counts.gr*200+counts.go*100+counts.me*50
 function gradeFor(a){ if(a>=100-1e-9)return 'SS'; if(a>95)return 'S'; if(a>90)return 'A'; if(a>80)return 'B'; if(a>70)return 'C'; return 'D'; }
 
 function applyScroll(){
-  approach=15000/clamp(S.scroll,5,35); // 実時間(ms)での移動時間 — 倍率を変えても不変
+  approach=15000/clamp(S.scroll,5,35);
   approachC=approach*rate;
 }
 async function startPlay(){
@@ -324,7 +240,6 @@ async function startPlay(){
     laneCnt=[0,0,0,0]; laneLit=[0,0,0,0];
     lastHUD={s:'',a:'',p:-1}; lastFrame=0;
     leadSec=Math.max(1.6, approach/1000+0.6);
-    // countdown表示
     const cd=$('countdown'); cd.classList.remove('hidden'); cd.textContent='READY';
     startAudio();
     state='playing';
@@ -337,7 +252,6 @@ function finish(){
   if(finished)return; finished=true; state='result';
   stopAudio(); laneCnt=[0,0,0,0];
   const sc=scoreNow(), ac=accNow(), gr=gradeFor(ac);
-  // best保存
   const k='vsrg_best_v1'; let best={}; try{best=JSON.parse(localStorage.getItem(k)||'{}');}catch(e){}
   const key=song.id+'|'+song.diffs[diffIdx].name;
   const isNew=!best[key]||sc>best[key].score;
@@ -356,7 +270,7 @@ function finish(){
 }
 function quitToSelect(){ stopAudio(); state='select'; paused=false; $('pauseMenu').classList.add('hidden'); show('screenSelect'); updateBestLine(); startPreview(); }
 
-/* ============ INPUT — ultra low latency ============ */
+/* ============ INPUT — ultra low latency (no asset) ============ */
 function laneFromX(x){ const l=Math.floor((x-fieldX)/laneWpx); return clamp(l,0,3); }
 function judgeOf(adt){ return adt<=W_P?0:adt<=W_GR?1:adt<=W_GO?2:adt<=W_ME?3:4; }
 function applyHit(j,dt){
@@ -367,22 +281,16 @@ function applyHit(j,dt){
   judgePop={t:performance.now(),txt:JN[j],col:JC[j],early:dt<-8?'FAST':dt>8?'SLOW':''};
 }
 function immediateDraw(){
-  // 即時視覚フィードバック: 次のrAFを待たずに描画（体感遅延を16ms削減）
   if(state==='playing'&&!paused){
     try{ songMs=rawSongMs(); draw(performance.now()); }catch(e){}
   }
 }
 function press(lane){
-  // 1) まず即座にレーン光 + タップ音（最優先、判定より先）
   laneCnt[lane]++; laneLit[lane]=1;
-  // ACがsuspendedなら即resume試行（awaitしない）
   if(AC&&AC.state==='suspended'){ try{AC.resume();}catch(e){} }
   playTap();
-  if(state!=='playing'||paused){
-    // select画面でも即時フィードバックが欲しい場合は描画しない
-    return;
-  }
-  const inputMs=rawSongMs(); // 前フレームの描画時刻ではなく入力時点の音源時計
+  if(state!=='playing'||paused) return;
+  const inputMs=rawSongMs();
   const arr=lanes[lane]; let cand=null;
   for(let i=ptr[lane]; i<arr.length && i<ptr[lane]+6; i++){
     const n=arr[i]; if(n.hs!==0)continue;
@@ -390,10 +298,7 @@ function press(lane){
     if(dt<-W_ME)break; if(dt>W_ME)continue;
     cand=n; break;
   }
-  if(!cand){
-    immediateDraw();
-    return; // ghost: ペナルティなし
-  }
+  if(!cand){ immediateDraw(); return; }
   const dt=inputMs-cand.t, j=judgeOf(Math.abs(dt));
   cand.hs=1; applyHit(j,dt);
   if(cand.ln&&j!==4)hold[lane]=cand;
@@ -403,10 +308,7 @@ function press(lane){
 }
 function release(lane){
   laneCnt[lane]=Math.max(0,laneCnt[lane]-1);
-  if(state!=='playing'||paused){
-    if(state==='playing') immediateDraw();
-    return;
-  }
+  if(state!=='playing'||paused){ if(state==='playing') immediateDraw(); return; }
   const n=hold[lane]; if(!n){ immediateDraw(); return; }
   const dt=rawSongMs()-n.e;
   if(dt<-W_ME){ n.ts=2; counts.mi++; judged++; combo=0;
@@ -415,7 +317,6 @@ function release(lane){
   hold[lane]=null;
   immediateDraw();
 }
-// キーボード: captureフェーズで最速捕捉、repeat無視、preventDefaultでブラウザ遅延除去
 window.addEventListener('keydown',e=>{
   if(e.repeat) return;
   const i=S.keys.indexOf(e.code);
@@ -434,18 +335,13 @@ cv.addEventListener('pointerdown',e=>{
   try{cv.setPointerCapture(e.pointerId);}catch(_){}
   const r=cv.getBoundingClientRect(), l=laneFromX(e.clientX-r.left);
   ptrMap.set(e.pointerId,l);
-  // タッチでもACを即resume
   if(AC&&AC.state==='suspended'){ try{AC.resume();}catch(e){} }
   press(l);
 },{passive:false});
-function ptrUp(e){
-  const l=ptrMap.get(e.pointerId);
-  if(l!==undefined){ ptrMap.delete(e.pointerId); release(l); }
-}
+function ptrUp(e){ const l=ptrMap.get(e.pointerId); if(l!==undefined){ptrMap.delete(e.pointerId);release(l);} }
 cv.addEventListener('pointerup',ptrUp,{passive:false});
 cv.addEventListener('pointercancel',ptrUp,{passive:false});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
-// 追加: touchstartでも即時AC生成（iOSの初回遅延対策）
 cv.addEventListener('touchstart',e=>{
   e.preventDefault();
   if(!AC){ ensureCtx(); }
@@ -460,21 +356,20 @@ function togglePause(force){
   if(to===paused)return; paused=to;
   $('pauseMenu').classList.toggle('hidden',!paused);
   if(paused){ AC.suspend(); }
-  else { // 中断中の入力クリア
+  else {
     laneCnt=[0,0,0,0]; ptrMap.clear(); AC.resume(); requestAnimationFrame(loop); }
 }
 
 /* ============ UPDATE + RENDER LOOP ============ */
 let lastFrame=0;
 function yFor(t){ return judgeY-((t-songMs)/approachC)*(judgeY-topY); }
-function noteAlpha(dHead){ return clamp((approachC-dHead)/(approachC*0.1),0.35,1); } // 上端で短くフェードイン
-function belowAlpha(y){ return y>judgeY?clamp(1-(y-judgeY)/280,0.55,1):1; } // 判定ライン通過後は少し薄く
+function noteAlpha(dHead){ return clamp((approachC-dHead)/(approachC*0.1),0.35,1); }
+function belowAlpha(y){ return y>judgeY?clamp(1-(y-judgeY)/280,0.55,1):1; }
 function loop(now){
   if(state!=='playing')return;
   if(paused)return;
   const dt=Math.min(0.05,(now-lastFrame)/1000||0.016); lastFrame=now;
   songMs=rawSongMs();
-  // miss検出
   for(let l=0;l<4;l++){
     const arr=lanes[l];
     while(ptr[l]<arr.length){
@@ -487,21 +382,17 @@ function loop(now){
       } else break;
     }
   }
-  // LN保持完了
   for(let l=0;l<4;l++){ const n=hold[l];
     if(n&&songMs>=n.e){ n.ts=1; counts.p++; judged++; combo++; if(combo>maxCombo)maxCombo=combo; hold[l]=null; } }
   for(let l=0;l<4;l++)laneLit[l]=Math.max(0,laneLit[l]-dt*5);
-  // timing pulse用
   if(chart&&chart.tps.length){ while(tpIdx<chart.tps.length-1&&chart.tps[tpIdx+1].t<=songMs)tpIdx++;
     while(tpIdx>0&&chart.tps[tpIdx].t>songMs)tpIdx--; }
   draw(now);
-  // HUD (変化時のみDOM更新)
   const sc=String(scoreNow()), ac=accNow().toFixed(2)+'%';
   const pr=clamp(songMs/Math.max(1,lastT),0,1);
   if(sc!==lastHUD.s){$('hudScore').textContent=Number(sc).toLocaleString();lastHUD.s=sc;}
   if(ac!==lastHUD.a){$('hudAcc').textContent=ac;lastHUD.a=ac;}
   const pi=Math.round(pr*500); if(pi!==lastHUD.p){$('hudProg').style.width=(pr*100)+'%';lastHUD.p=pi;}
-  // 終了
   if((judged>=totalJud&&songMs>lastT+600)||songMs>lastT+2500){ finish(); return; }
   requestAnimationFrame(loop);
 }
@@ -510,7 +401,6 @@ function draw(now){
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.clearRect(0,0,W,H);
   const span=judgeY-topY;
-  // field bg
   ctx.fillStyle='#000000';
   ctx.fillRect(fieldX,0,fieldW,H);
   for(let l=0;l<4;l++){
@@ -525,11 +415,9 @@ function draw(now){
     if(l>0){ ctx.fillStyle='rgba(255,255,255,.09)'; ctx.fillRect(x,0,1,H); }
   }
   ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fillRect(fieldX,0,1.5,H); ctx.fillRect(fieldX+fieldW-1.5,0,1.5,H);
-  // ---- LN bodies + notes ----
-  const bodyW=noteR*2; // LN body = same thickness as note
+  const bodyW=noteR*2;
   for(let l=0;l<4;l++){
     const x=fieldX+l*laneWpx+laneWpx/2, arr=lanes[l];
-    // hold中
     const h=hold[l];
     if(h){
       const ty=yFor(h.e), bot=judgeY+noteR*0.4, r=bodyW/2;
@@ -537,7 +425,6 @@ function draw(now){
       ctx.beginPath();
       ctx.moveTo(x-r,bot); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,bot);
       ctx.closePath(); ctx.fill();
-      // 保持エフェクト
       ctx.fillStyle=hexA(LN_COL,0.4);
       ctx.beginPath(); ctx.arc(x,judgeY,noteR*1.25,0,7); ctx.fill();
     }
@@ -546,7 +433,7 @@ function draw(now){
       if(n.hs!==0&&!(n.ln&&n===h)) { if(n.t-songMs<-300)continue; }
       const dHead=n.t-songMs;
       if(dHead>approachC+250)break;
-      if(n.hs!==0)continue; // 判定済みheadは描かない(hold除く→上で描画)
+      if(n.hs!==0)continue;
       const hy=judgeY-(dHead/approachC)*span;
       if(hy>judgeY+120)continue;
       if(hy<-noteR*2&&(!n.ln||yFor(n.e)<-noteR*2))continue;
@@ -559,14 +446,9 @@ function draw(now){
         if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.closePath(); }
         else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
         ctx.fill();
-        // LN head: 画像があれば画像、なければフラット円
+        ctx.fillStyle=LN_HEAD;
         ctx.globalAlpha=noteAlpha(dHead)*belowAlpha(hy);
-        if(lnSprites[l]){
-          drawSprite(lnSprites[l],x,hy);
-        }else{
-          ctx.fillStyle=LN_HEAD;
-          ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
-        }
+        ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
         ctx.globalAlpha=1;
       }
       else {
@@ -576,7 +458,6 @@ function draw(now){
       }
     }
   }
-  // judge rings (circle frames, beat pulse)
   let pulse=0;
   if(chart&&chart.tps.length){ const tp=chart.tps[tpIdx];
     if(tp&&tp.b>0&&songMs>=tp.t){ const ph=((songMs-tp.t)/tp.b)%1; pulse=Math.max(0,1-ph*2.5); } }
@@ -587,7 +468,6 @@ function draw(now){
     ctx.lineWidth=lw;
     ctx.strokeStyle=down?'rgba(255,255,255,1)':`rgba(255,255,255,${0.55+pulse*0.3})`;
     ctx.beginPath(); ctx.arc(x,judgeY,rr,0,7); ctx.stroke(); }
-  // judgement + combo
   const ja=now-judgePop.t;
   if(judgePop.t>0&&ja<700){
     const k=1-Math.min(1,ja/700), pop=ja<90?1+(90-ja)/90*0.35:1;
@@ -603,10 +483,9 @@ function draw(now){
     ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fillText(combo,fieldX+fieldW/2,judgeY-span*0.34+52);
     ctx.font='700 10px system-ui,sans-serif'; ctx.fillStyle='rgba(154,163,199,.9)'; ctx.fillText('COMBO',fieldX+fieldW/2,judgeY-span*0.34+66);
   }
-  // キー表示は下部HUD(#hudKeys)へ移動 — 画面上部はノーツ専用に
 }
 function drawSprite(sp,x,y){
-  const w=sp.c.width, h=sp.c.height, sc=noteR/sp.R; // コア半径が正確にnoteRになる
+  const w=sp.c.width, h=sp.c.height, sc=noteR/sp.R;
   ctx.drawImage(sp.c,x-w*sc/2,y-h*sc/2,w*sc,h*sc);
 }
 function hexA(hex,a){ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
@@ -625,19 +504,19 @@ function renderSongList(){
     wrap.className='song-item'+(i===openIdx?' on':'');
     const badges=s.diffs.map(d=>{
       const r=best[s.id+'|'+d.name];
-      return `<span class="bd${r?' done':''}">${escapeHtml(d.level)}</span>`;
+      return `<span class=\"bd${r?' done':''}\">${escapeHtml(d.level)}</span>`;
     }).join('');
     const head=document.createElement('button');
     head.className='song-head';
-    head.innerHTML=`<img src="${s.thumb}" alt="" loading="lazy" draggable="false">`
-      +`<span class="si-meta"><span class="si-title">${escapeHtml(s.title)}</span>`
-      +`<span class="si-artist">${escapeHtml(s.artist)}</span></span>`
-      +`<span class="si-badges">${badges}</span>`;
+    head.innerHTML=`<img src=\"${s.thumb}\" alt=\"\" loading=\"lazy\" draggable=\"false\">`
+      +`<span class=\"si-meta\"><span class=\"si-title\">${escapeHtml(s.title)}</span>`
+      +`<span class=\"si-artist\">${escapeHtml(s.artist)}</span></span>`
+      +`<span class=\"si-badges\">${badges}</span>`;
     head.onclick=()=>{ if(openIdx===i){ openIdx=-1; renderSongList(); return; }
       const switched=songIdx!==i;
       songIdx=i; song=SONGS[i]; openIdx=i;
       diffIdx=clamp(diffIdx,0,song.diffs.length-1);
-      $('bgBlur').style.backgroundImage=`url("${song.thumb}")`;
+      $('bgBlur').style.backgroundImage=`url(\"${song.thumb}\")`;
       renderSongList(); renderDiffs(); refreshSongInfo();
       if(switched)startPreview(); };
     wrap.appendChild(head);
@@ -656,7 +535,7 @@ function renderDiffs(){
   song.diffs.forEach((d,i)=>{
     const b=document.createElement('button');
     b.className='diff-btn'+(i===diffIdx?' on':''); b.dataset.d=i;
-    b.innerHTML=`<span class="dn">${escapeHtml(d.name)}</span><span class="lv">Lv.${escapeHtml(d.level)}</span>`;
+    b.innerHTML=`<span class=\"dn\">${escapeHtml(d.name)}</span><span class=\"lv\">Lv.${escapeHtml(d.level)}</span>`;
     b.onclick=()=>{ diffIdx=i; S.lastDiff=i; save(); renderDiffs(); refreshSongInfo(); };
     row.appendChild(b);
   });
@@ -713,25 +592,21 @@ async function init(){
     const r=await fetch('songs/songs.json'); const j=await r.json();
     SONGS=j.songs||[];
   }catch(e){ SONGS=[]; }
-  if(!SONGS.length){ // フォールバック（songs.jsonが無い場合も失恋後で遊べる）
+  if(!SONGS.length){
     SONGS=[{id:'shitsurengo',title:'失恋後',artist:'櫻優',audio:'songs/失恋後/失恋後.mp3',
       thumb:'songs/失恋後/サムネイル.png',
       diffs:[{name:'Easy',level:5,file:'songs/失恋後/easy.osu'},{name:'Normal',level:9,file:'songs/失恋後/normal.osu'},{name:'Hard',level:11,file:'songs/失恋後/hard.osu'}]}];
   }
   song=SONGS[0]; diffIdx=clamp(S.lastDiff|0,0,song.diffs.length-1); rate=S.rate;
   renderSongList(); renderDiffs(); syncSettingsUI(); refreshSongInfo(); resize();
-  loadNoteAssets();
   setTimeout(resize,300);
-  // 早期にAudioContextをウォームアップ（初回キー遅延を削減）
   try{ ensureCtx(); }catch(e){}
-  // select bindings
   $('btnStart').onclick=startPlay;
   $('rateSlider').oninput=e=>setRate(parseFloat(e.target.value));
   $('rateMinus').onclick=()=>setRate(S.rate-0.1);
   $('ratePlus').onclick=()=>setRate(S.rate+0.1);
   $('qScroll').oninput=e=>{S.scroll=+e.target.value;save();syncSettingsUI();};
   $('qOffset').oninput=e=>{S.offset=+e.target.value;save();syncSettingsUI();};
-  // pause
   $('btnPause').onclick=()=>togglePause();
   $('btnResume').onclick=()=>togglePause(false);
   $('btnRestart').onclick=()=>{ paused=false; $('pauseMenu').classList.add('hidden');
@@ -739,10 +614,8 @@ async function init(){
   $('btnQuit').onclick=quitToSelect;
   $('pScroll').oninput=e=>{S.scroll=+e.target.value;applyScroll();save();syncSettingsUI();};
   $('pOffset').oninput=e=>{S.offset=+e.target.value;save();syncSettingsUI();};
-  // result
   $('btnRetry').onclick=()=>{ state='select'; startPlay(); };
   $('btnBack').onclick=quitToSelect;
-  // settings modal
   const M=$('settingsModal');
   $('btnSettingsTop').onclick=()=>{M.classList.remove('hidden');};
   $('btnCloseSettings').onclick=()=>M.classList.add('hidden');
@@ -757,7 +630,6 @@ async function init(){
   $('sTapVol').oninput=e=>{S.tapVol=+e.target.value;save();syncSettingsUI();playTap();};
   $('sBgm').oninput=e=>{S.bgm=+e.target.value;if(bgmGain)bgmGain.gain.value=S.bgm/100;save();syncSettingsUI();};
   $('btnResetSettings').onclick=()=>{ S={...DEF,lastDiff:diffIdx}; save(); rate=S.rate; applyScroll(); syncSettingsUI(); resize(); refreshSongInfo(); toast('設定をリセットしました'); };
-  // 音源プリフェッチ（初回タップで裏読み→開始高速化）
   const pre=()=>{ window.removeEventListener('pointerdown',pre); if(state==='select')startPreview(); };
   window.addEventListener('pointerdown',pre);
 }
