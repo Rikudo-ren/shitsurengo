@@ -1,0 +1,16 @@
+{
+  "songs": [
+    {
+      "id": "shitsurengo",
+      "title": "失恋後",
+      "artist": "Rikudo-ren",
+      "audio": "songs/失恋後/失恋後.mp3",
+      "thumb": "songs/失恋後/サムネイル.png",
+      "diffs": [
+        { "name": "Easy", "level": 5, "file": "songs/失恋後/easy.osu" },
+        { "name": "Normal", "level": 9, "file": "songs/失恋後/normal.osu" },
+        { "name": "Hard", "level": 11, "file": "songs/失恋後/hard.osu" }
+      ]
+    }
+  ]
+}

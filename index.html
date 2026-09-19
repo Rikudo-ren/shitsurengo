@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="description" content="超軽量スタイリッシュ VSRG — 失恋後">
+<meta property="og:title" content="失恋後 VSRG">
+<meta property="og:description" content="超軽量・スタイリッシュな4K VSRG">
+<meta property="og:image" content="songs/失恋後/サムネイル.png">
+<link rel="icon" type="image/png" href="songs/失恋後/サムネイル.png">
+<link rel="apple-touch-icon" href="songs/失恋後/サムネイル.png">
+<title>失恋後 VSRG — 超軽量 音ゲー</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="bgBlur" aria-hidden="true"></div>
+<div id="app">
+
+  <!-- ===== TOP BAR ===== -->
+  <header id="topbar">
+    <div class="logo">◉ <span>VSRG</span><em>lite</em></div>
+    <div class="top-actions">
+      <button id="btnSettingsTop" class="icon-btn" aria-label="設定">⚙</button>
+    </div>
+  </header>
+
+  <!-- ===== SELECT SCREEN ===== -->
+  <main id="screenSelect" class="screen active">
+    <div class="select-wrap">
+      <div class="song-row hidden" id="songRow"></div>
+      <div class="song-card glass">
+        <div class="song-thumb">
+          <img id="songThumb" src="songs/失恋後/サムネイル.png" alt="thumbnail" draggable="false">
+          <div class="thumb-glow"></div>
+        </div>
+        <div class="song-meta">
+          <div id="songTitle" class="song-title">失恋後</div>
+          <div id="songArtist" class="song-artist">Rikudo-ren</div>
+          <div id="songInfo" class="song-info">— notes · —:—</div>
+          <div id="bestInfo" class="best-info"></div>
+        </div>
+      </div>
+
+      <div class="diff-row" id="diffRow" role="tablist"></div>
+
+      <div class="panel glass">
+        <div class="row-between">
+          <label class="lbl">再生速度 <span id="rateVal" class="val">1.0x</span></label>
+          <div class="stepper">
+            <button id="rateMinus" class="mini-btn">−</button>
+            <button id="ratePlus" class="mini-btn">＋</button>
+          </div>
+        </div>
+        <input id="rateSlider" type="range" min="0.5" max="3" step="0.1" value="1">
+        <div class="hint">0.5x – 3.0x（0.1刻み）· 音源も一緒に加速</div>
+      </div>
+
+      <div class="panel glass quick">
+        <div class="qitem"><label>SCROLL <span id="qScrollVal" class="val">20</span></label>
+          <input id="qScroll" type="range" min="5" max="35" step="1" value="20"></div>
+        <div class="qitem"><label>OFFSET <span id="qOffsetVal" class="val">0ms</span></label>
+          <input id="qOffset" type="range" min="-200" max="200" step="1" value="0"></div>
+      </div>
+
+      <button id="btnStart" class="start-btn">▶&nbsp;&nbsp;PLAY</button>
+      <div class="keys-hint">KEYS: <span id="keysHint">D F J K</span> · タップ/クリックでも可</div>
+      <div id="loadStatus" class="load-status"></div>
+    </div>
+  </main>
+
+  <!-- ===== GAME SCREEN ===== -->
+  <main id="screenGame" class="screen">
+    <div id="gameBg"></div>
+    <canvas id="cv"></canvas>
+    <div id="hud">
+      <div class="hud-left">
+        <div id="hudScore">0</div>
+        <div id="hudAcc">100.00%</div>
+      </div>
+      <div class="hud-center"><div id="hudSong">失恋後 [Easy] 1.0x</div></div>
+      <div class="hud-right">
+        <button id="btnPause" class="icon-btn sm" aria-label="一時停止">⏸</button>
+      </div>
+    </div>
+    <div id="hudBar"><div id="hudProg"></div></div>
+    <div id="countdown" class="hidden"></div>
+    <div id="pauseMenu" class="hidden">
+      <div class="pause-card glass">
+        <h2>⏸ PAUSED</h2>
+        <div class="pause-row">
+          <button id="btnResume" class="btn primary">▶ 再開</button>
+          <button id="btnRestart" class="btn">↻ 最初から</button>
+          <button id="btnQuit" class="btn ghost">選曲へ</button>
+        </div>
+        <div class="pause-tune">
+          <label>OFFSET <span id="pOffsetVal" class="val">0ms</span></label>
+          <input id="pOffset" type="range" min="-200" max="200" step="1" value="0">
+          <label>SCROLL <span id="pScrollVal" class="val">20</span></label>
+          <input id="pScroll" type="range" min="5" max="35" step="1" value="20">
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== RESULT SCREEN ===== -->
+  <main id="screenResult" class="screen">
+    <div class="result-wrap">
+      <div class="result-card glass">
+        <img id="resThumb" src="songs/失恋後/サムネイル.png" alt="">
+        <div class="res-head">
+          <div id="resTitle" class="song-title">失恋後</div>
+          <div id="resDiff" class="song-artist">Easy Lv.5 · 1.0x</div>
+        </div>
+        <div id="resGrade" class="grade">SS</div>
+        <div id="resScore" class="res-score">1000000</div>
+        <div id="resAcc" class="res-acc">100.00%</div>
+        <div id="resNew" class="res-new hidden">✦ NEW BEST ✦</div>
+        <div class="res-grid">
+          <div class="rg perfect"><span>Perfect</span><b id="cP">0</b></div>
+          <div class="rg great"><span>Great</span><b id="cGr">0</b></div>
+          <div class="rg good"><span>Good</span><b id="cGo">0</b></div>
+          <div class="rg meh"><span>Meh</span><b id="cMe">0</b></div>
+          <div class="rg miss"><span>Miss</span><b id="cMi">0</b></div>
+          <div class="rg combo"><span>Max Combo</span><b id="cCb">0</b></div>
+        </div>
+        <div id="resStats" class="res-stats"></div>
+        <div class="res-btns">
+          <button id="btnRetry" class="btn primary">↻ RETRY</button>
+          <button id="btnBack" class="btn ghost">選曲へ</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div id="settingsModal" class="hidden">
+    <div class="sheet glass">
+      <div class="sheet-head"><h2>⚙ 設定</h2><button id="btnCloseSettings" class="icon-btn sm">✕</button></div>
+      <div class="sheet-body">
+        <div class="set-group"><h3>プレイ</h3>
+          <label>スクロール速度 <span id="sScrollVal" class="val">20</span><input id="sScroll" type="range" min="5" max="35" step="1" value="20"></label>
+          <label>オフセット <span id="sOffsetVal" class="val">0ms</span><input id="sOffset" type="range" min="-200" max="200" step="1" value="0"></label>
+          <div class="hint">+で判定が遅く / −で早く。FASTが多い→+、SLOWが多い→−</div>
+          <label>再生速度 <span id="sRateVal" class="val">1.0x</span><input id="sRate" type="range" min="0.5" max="3" step="0.1" value="1"></label>
+        </div>
+        <div class="set-group"><h3>レーン・ノーツ</h3>
+          <label>レーン幅 <span id="sLaneVal" class="val">100%</span><input id="sLane" type="range" min="60" max="140" step="5" value="100"></label>
+          <label>ノーツの大きさ <span id="sNoteVal" class="val">100%</span><input id="sNote" type="range" min="60" max="150" step="5" value="100"></label>
+          <label>判定ライン高さ <span id="sJudgeVal" class="val">86%</span><input id="sJudge" type="range" min="70" max="94" step="1" value="86"></label>
+        </div>
+        <div class="set-group"><h3>サウンド</h3>
+          <label class="check"><input id="sTap" type="checkbox" checked> タップエフェクト音 <span id="sTapVal" class="val">50</span></label>
+          <input id="sTapVol" type="range" min="0" max="100" step="1" value="50">
+          <label>BGM音量 <span id="sBgmVal" class="val">80</span><input id="sBgm" type="range" min="0" max="100" step="1" value="80"></label>
+        </div>
+        <div class="set-group"><h3>キー配置（クリック→キー入力）</h3>
+          <div id="keyRow" class="key-row"></div>
+          <div class="hint">DFJK 推奨 · モバイルはレーン直接タップ</div>
+        </div>
+        <div class="set-group"><h3>判定（固定・osu!mania準拠）</h3>
+          <div class="judge-table">
+            <div><i class="dot perfect"></i>Perfect ±34ms</div>
+            <div><i class="dot great"></i>Great ±67ms</div>
+            <div><i class="dot good"></i>Good ±97ms</div>
+            <div><i class="dot meh"></i>Meh ±122ms</div>
+          </div>
+          <div class="hint">ACC = (P×300 + Gr×200 + Go×100 + Meh×50) ÷ (300×総数)</div>
+        </div>
+        <button id="btnResetSettings" class="btn ghost full">設定をリセット</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
