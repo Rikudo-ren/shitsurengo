@@ -116,6 +116,7 @@ let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
 let sprites=[];
 const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
 const LN_COL='#a9aebf'; // long-note gray
+const LN_HEAD='#d8dce8'; // LN head: flat, brighter than band
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2);
   const r=cv.getBoundingClientRect(); W=Math.max(50,r.width||innerWidth); H=Math.max(50,r.height||innerHeight);
@@ -387,9 +388,12 @@ function draw(now){
         ctx.fillStyle=hexA(LN_COL,0.45);
         const y1=clamp(Math.max(hy,ty),-60,H+60);
         ctx.beginPath();
-        if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.arc(x,y1,r,0,Math.PI); ctx.closePath(); }
+        if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.closePath(); }
         else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
-        ctx.fill(); ctx.globalAlpha=1;
+        ctx.fill();
+        ctx.fillStyle=LN_HEAD;
+        ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
+        ctx.globalAlpha=1;
       }
       else {
         const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
