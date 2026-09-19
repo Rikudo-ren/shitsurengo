@@ -32,27 +32,65 @@ let paused=false, finished=false;
 let lastHUD={s:'',a:'',p:-1};
 let tpIdx=0;
 
-/* ============ AUDIO ============ */
+/* ============ AUDIO — low latency ============ */
 let AC=null, bgmGain=null, clickBuf=null;
+let tapAssetTried=false;
+function synthClick(){
+  // 60ms decaying blip+noise — zero assets, instant, lowest latency
+  const sr=AC.sampleRate, n=Math.floor(sr*0.06);
+  const buf=AC.createBuffer(1,n,sr); const d=buf.getChannelData(0);
+  for(let i=0;i<n;i++){ const t=i/sr, k=Math.exp(-t*90);
+    d[i]=(Math.sin(2*Math.PI*(1900-900*t*20)*t)*0.7+(Math.random()*2-1)*0.25)*k*0.9; }
+  return buf;
+}
+async function tryLoadTapAsset(){
+  if(tapAssetTried||!AC) return;
+  tapAssetTried=true;
+  const candidates=['assets/tap.wav','assets/tap.mp3','assets/hit.wav','assets/hit.mp3'];
+  for(const url of candidates){
+    try{
+      const r=await fetch(url,{cache:'force-cache'}); if(!r.ok) continue;
+      const ab=await r.arrayBuffer(); if(ab.byteLength<100) continue;
+      const decoded=await AC.decodeAudioData(ab.slice(0));
+      if(decoded&&decoded.length>0){
+        clickBuf=decoded;
+        // console.log('[VSRG] tap asset loaded', url, 'len', decoded.length);
+        break;
+      }
+    }catch(e){ /* try next */ }
+  }
+}
 async function ensureCtx(){
   if(!AC){
     const C=window.AudioContext||window.webkitAudioContext; if(!C){toast('WebAudio非対応のブラウザです');return false;}
-    AC=new C(); bgmGain=AC.createGain(); bgmGain.connect(AC.destination); bgmGain.gain.value=S.bgm/100;
-    // synthesize tap click (60ms decaying blip+noise) — zero assets
-    const sr=AC.sampleRate, n=Math.floor(sr*0.06);
-    clickBuf=AC.createBuffer(1,n,sr); const d=clickBuf.getChannelData(0);
-    for(let i=0;i<n;i++){ const t=i/sr, k=Math.exp(-t*90);
-      d[i]=(Math.sin(2*Math.PI*(1900-900*t*20)*t)*0.7+(Math.random()*2-1)*0.25)*k*0.9; }
+    try{
+      AC=new C({latencyHint:'interactive', sampleRate:48000});
+    }catch(e1){
+      try{ AC=new C({latencyHint:'interactive'}); }catch(e2){ AC=new C(); }
+    }
+    bgmGain=AC.createGain(); bgmGain.connect(AC.destination); bgmGain.gain.value=S.bgm/100;
+    clickBuf=synthClick();
+    // try to replace with file-based tap if present (osu! style) — non-blocking
+    tryLoadTapAsset();
   }
   if(AC.state==='suspended'){ try{await AC.resume();}catch(e){} }
+  // iOS / Chrome: ensure resume on next tick as well
+  if(AC.state!=='running'){
+    try{ AC.resume(); }catch(e){}
+  }
   return true;
 }
 function playTap(){
-  if(!S.tap||!AC||AC.state!=='running')return;
+  if(!S.tap||!AC||!clickBuf) return;
+  // resume immediately if suspended — don't wait
+  if(AC.state==='suspended'){ try{AC.resume();}catch(e){} }
+  if(AC.state!=='running'&&AC.state!=='suspended') return;
   try{
     const src=AC.createBufferSource(); src.buffer=clickBuf;
-    const g=AC.createGain(); g.gain.value=(S.tapVol/100)*0.8;
-    src.connect(g); g.connect(AC.destination); src.start();
+    const g=AC.createGain(); g.gain.value=(S.tapVol/100)*0.9;
+    src.connect(g); g.connect(AC.destination);
+    // start at currentTime for minimal latency (0 = immediate)
+    src.start(AC.currentTime);
   }catch(e){}
 }
 let srcNode=null, audioBuf=null;
@@ -137,10 +175,13 @@ function parseOsu(text){
   return {keys,audio,title,artist,ver,od,tps,notes};
 }
 
-/* ============ CANVAS / LAYOUT ============ */
-const cv=$('cv'), ctx=cv.getContext('2d',{alpha:true});
+/* ============ CANVAS / LAYOUT — low latency + asset support ============ */
+const cv=$('cv');
+let ctx;
+try{ ctx=cv.getContext('2d',{alpha:true, desynchronized:true}); }catch(e){ ctx=cv.getContext('2d',{alpha:true}); }
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
 let sprites=[];
+let noteAsset=null, noteLnAsset=null, noteAssetReady=false;
 const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
 const LN_COL='#a9aebf'; // long-note gray
 const LN_HEAD='#d8dce8'; // LN head: flat, brighter than band
@@ -173,8 +214,58 @@ function circleSprite(color,ring,mid,edge,stroke){
   }
   return {c, R};
 }
-function buildSprites(){ sprites=[];
-  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); } }
+function imageSprite(img, fallbackColor){
+  const pad=noteR*0.5, d=Math.ceil((noteR*2+pad*2)*2);
+  const c=document.createElement('canvas'); c.width=c.height=d;
+  const g=c.getContext('2d');
+  const size=noteR*2;
+  // draw with slight glow if image has alpha
+  try{
+    g.shadowColor=fallbackColor||'#ffffff';
+    g.shadowBlur=noteR*0.6;
+    g.drawImage(img, d/2-size/2, d/2-size/2, size, size);
+    g.shadowBlur=0;
+    // core
+    g.globalAlpha=1;
+    g.drawImage(img, d/2-size/2, d/2-size/2, size, size);
+  }catch(e){
+    return circleSprite(fallbackColor||'#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)');
+  }
+  return {c, R:noteR};
+}
+let lnSprites=[];
+function buildSprites(){
+  sprites=[]; lnSprites=[];
+  for(let i=0;i<4;i++){
+    if(noteAsset){
+      sprites.push(imageSprite(noteAsset,'#ffffff'));
+    }else{
+      sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)'));
+    }
+    if(noteLnAsset){
+      lnSprites.push(imageSprite(noteLnAsset,'#a9aebf'));
+    }else{
+      // LN headは少し暗めのフラット円
+      const pad=noteR*0.2, d=Math.ceil((noteR*2+pad*2)*2);
+      const c=document.createElement('canvas'); c.width=c.height=d;
+      const g=c.getContext('2d'), cx=d/2, cy=d/2, R=noteR;
+      g.fillStyle=LN_HEAD; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
+      lnSprites.push({c,R});
+    }
+  }
+}
+function loadNoteAssets(){
+  const tryLoad=(src, cb)=>{
+    const img=new Image();
+    img.decoding='async';
+    img.onload=()=>{ cb(img); };
+    img.onerror=()=>{};
+    img.src=src+'?v=13'; // バージョン付きでキャッシュ、無ければ即フォールバック
+  };
+  // 存在すれば使う（osu!スキン方式）。無くても合成スプライトで動作するので遅延は増えない
+  tryLoad('assets/note.png', img=>{ noteAsset=img; noteAssetReady=true; buildSprites(); });
+  tryLoad('assets/note_ln.png', img=>{ noteLnAsset=img; buildSprites(); });
+}
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -265,7 +356,7 @@ function finish(){
 }
 function quitToSelect(){ stopAudio(); state='select'; paused=false; $('pauseMenu').classList.add('hidden'); show('screenSelect'); updateBestLine(); startPreview(); }
 
-/* ============ INPUT ============ */
+/* ============ INPUT — ultra low latency ============ */
 function laneFromX(x){ const l=Math.floor((x-fieldX)/laneWpx); return clamp(l,0,3); }
 function judgeOf(adt){ return adt<=W_P?0:adt<=W_GR?1:adt<=W_GO?2:adt<=W_ME?3:4; }
 function applyHit(j,dt){
@@ -275,9 +366,22 @@ function applyHit(j,dt){
   if(j===4){ combo=0; } else { combo++; if(combo>maxCombo)maxCombo=combo; }
   judgePop={t:performance.now(),txt:JN[j],col:JC[j],early:dt<-8?'FAST':dt>8?'SLOW':''};
 }
+function immediateDraw(){
+  // 即時視覚フィードバック: 次のrAFを待たずに描画（体感遅延を16ms削減）
+  if(state==='playing'&&!paused){
+    try{ songMs=rawSongMs(); draw(performance.now()); }catch(e){}
+  }
+}
 function press(lane){
-  laneCnt[lane]++; laneLit[lane]=1; playTap();
-  if(state!=='playing'||paused)return;
+  // 1) まず即座にレーン光 + タップ音（最優先、判定より先）
+  laneCnt[lane]++; laneLit[lane]=1;
+  // ACがsuspendedなら即resume試行（awaitしない）
+  if(AC&&AC.state==='suspended'){ try{AC.resume();}catch(e){} }
+  playTap();
+  if(state!=='playing'||paused){
+    // select画面でも即時フィードバックが欲しい場合は描画しない
+    return;
+  }
   const inputMs=rawSongMs(); // 前フレームの描画時刻ではなく入力時点の音源時計
   const arr=lanes[lane]; let cand=null;
   for(let i=ptr[lane]; i<arr.length && i<ptr[lane]+6; i++){
@@ -286,39 +390,67 @@ function press(lane){
     if(dt<-W_ME)break; if(dt>W_ME)continue;
     cand=n; break;
   }
-  if(!cand)return; // ghost: ペナルティなし
+  if(!cand){
+    immediateDraw();
+    return; // ghost: ペナルティなし
+  }
   const dt=inputMs-cand.t, j=judgeOf(Math.abs(dt));
   cand.hs=1; applyHit(j,dt);
   if(cand.ln&&j!==4)hold[lane]=cand;
   else if(cand.ln&&j===4){ cand.ts=2; counts.mi++; judged++; combo=0; }
   while(ptr[lane]<arr.length&&arr[ptr[lane]].hs!==0)ptr[lane]++;
+  immediateDraw();
 }
 function release(lane){
   laneCnt[lane]=Math.max(0,laneCnt[lane]-1);
-  if(state!=='playing'||paused)return;
-  const n=hold[lane]; if(!n)return;
+  if(state!=='playing'||paused){
+    if(state==='playing') immediateDraw();
+    return;
+  }
+  const n=hold[lane]; if(!n){ immediateDraw(); return; }
   const dt=rawSongMs()-n.e;
   if(dt<-W_ME){ n.ts=2; counts.mi++; judged++; combo=0;
     judgePop={t:performance.now(),txt:'MISS',col:JC[4],early:'EARLY RELEASE'}; }
   else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt); }
   hold[lane]=null;
+  immediateDraw();
 }
+// キーボード: captureフェーズで最速捕捉、repeat無視、preventDefaultでブラウザ遅延除去
 window.addEventListener('keydown',e=>{
-  if(e.repeat)return;
+  if(e.repeat) return;
   const i=S.keys.indexOf(e.code);
   if(listenKey>=0){ e.preventDefault(); S.keys[listenKey]=e.code; listenKey=-1; save(); renderKeys(); return; }
   if(i>=0){ e.preventDefault(); press(i); return; }
-  if(e.code==='Escape'||e.code==='KeyP'){ if(state==='playing')togglePause(); }
-  if(e.code==='Enter'&&state==='select')startPlay();
-});
-window.addEventListener('keyup',e=>{ const i=S.keys.indexOf(e.code); if(i>=0){e.preventDefault();release(i);} });
+  if(e.code==='Escape'||e.code==='KeyP'){ if(state==='playing'){ e.preventDefault(); togglePause(); } }
+  if(e.code==='Enter'&&state==='select'){ e.preventDefault(); startPlay(); }
+},{passive:false, capture:true});
+window.addEventListener('keyup',e=>{
+  const i=S.keys.indexOf(e.code);
+  if(i>=0){ e.preventDefault(); release(i); }
+},{passive:false, capture:true});
 const ptrMap=new Map();
-cv.addEventListener('pointerdown',e=>{ e.preventDefault(); try{cv.setPointerCapture(e.pointerId);}catch(_){}
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  try{cv.setPointerCapture(e.pointerId);}catch(_){}
   const r=cv.getBoundingClientRect(), l=laneFromX(e.clientX-r.left);
-  ptrMap.set(e.pointerId,l); press(l); },{passive:false});
-function ptrUp(e){ const l=ptrMap.get(e.pointerId); if(l!==undefined){ptrMap.delete(e.pointerId);release(l);} }
-cv.addEventListener('pointerup',ptrUp); cv.addEventListener('pointercancel',ptrUp);
+  ptrMap.set(e.pointerId,l);
+  // タッチでもACを即resume
+  if(AC&&AC.state==='suspended'){ try{AC.resume();}catch(e){} }
+  press(l);
+},{passive:false});
+function ptrUp(e){
+  const l=ptrMap.get(e.pointerId);
+  if(l!==undefined){ ptrMap.delete(e.pointerId); release(l); }
+}
+cv.addEventListener('pointerup',ptrUp,{passive:false});
+cv.addEventListener('pointercancel',ptrUp,{passive:false});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
+// 追加: touchstartでも即時AC生成（iOSの初回遅延対策）
+cv.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  if(!AC){ ensureCtx(); }
+  if(AC&&AC.state==='suspended'){ try{AC.resume();}catch(_){} }
+},{passive:false});
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&state==='playing'&&!paused)togglePause(); });
 document.addEventListener('gesturestart',e=>e.preventDefault());
 
@@ -427,9 +559,14 @@ function draw(now){
         if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.closePath(); }
         else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
         ctx.fill();
-        ctx.fillStyle=LN_HEAD;
+        // LN head: 画像があれば画像、なければフラット円
         ctx.globalAlpha=noteAlpha(dHead)*belowAlpha(hy);
-        ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
+        if(lnSprites[l]){
+          drawSprite(lnSprites[l],x,hy);
+        }else{
+          ctx.fillStyle=LN_HEAD;
+          ctx.beginPath(); ctx.arc(x,hy,r,0,7); ctx.fill();
+        }
         ctx.globalAlpha=1;
       }
       else {
@@ -583,7 +720,10 @@ async function init(){
   }
   song=SONGS[0]; diffIdx=clamp(S.lastDiff|0,0,song.diffs.length-1); rate=S.rate;
   renderSongList(); renderDiffs(); syncSettingsUI(); refreshSongInfo(); resize();
+  loadNoteAssets();
   setTimeout(resize,300);
+  // 早期にAudioContextをウォームアップ（初回キー遅延を削減）
+  try{ ensureCtx(); }catch(e){}
   // select bindings
   $('btnStart').onclick=startPlay;
   $('rateSlider').oninput=e=>setRate(parseFloat(e.target.value));
