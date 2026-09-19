@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="songs/失恋後/サムネイル.png">
 <link rel="apple-touch-icon" href="songs/失恋後/サムネイル.png">
 <title>失恋後 VSRG — 超軽量 音ゲー</title>
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/style.css?v=15">
 </head>
 <body>
 <div id="bgBlur" aria-hidden="true"></div>
@@ -147,12 +147,19 @@
           <label>スクロール速度 <span id="sScrollVal" class="val">20</span><input id="sScroll" type="range" min="5" max="35" step="1" value="20"></label>
           <label>オフセット <span id="sOffsetVal" class="val">0ms</span><input id="sOffset" type="range" min="-200" max="200" step="1" value="0"></label>
           <div class="hint">実時間ms（全倍率共通）。+でノーツ到達を早める / −で遅らせる。FASTが多い→+、SLOWが多い→−</div>
+          <div id="latInfo" class="hint lat">音声出力遅延: 未計測</div>
+          <div class="hint">判定ライン下の小さなバーは直近の入力ズレ（左=FAST / 右=SLOW、白線=平均）。白線が左寄りなら＋、右寄りなら−に動かして中央に合わせると最も正確</div>
           <label>再生速度 <span id="sRateVal" class="val">1.0x</span><input id="sRate" type="range" min="0.5" max="3" step="0.1" value="1"></label>
         </div>
         <div class="set-group"><h3>レーン・ノーツ</h3>
           <label>レーン幅 <span id="sLaneVal" class="val">100%</span><input id="sLane" type="range" min="60" max="140" step="5" value="100"></label>
           <label>ノーツの大きさ <span id="sNoteVal" class="val">100%</span><input id="sNote" type="range" min="60" max="150" step="5" value="100"></label>
           <label>判定ライン高さ <span id="sJudgeVal" class="val">86%</span><input id="sJudge" type="range" min="70" max="94" step="1" value="86"></label>
+          <label class="row-sel">描画解像度 <select id="sRes">
+            <option value="auto">自動（重い端末では下げる）</option>
+            <option value="high">高（端末のフル解像度）</option>
+            <option value="low">低（最軽量・カクつく時）</option>
+          </select></label>
         </div>
         <div class="set-group"><h3>サウンド</h3>
           <label class="check"><input id="sTap" type="checkbox" checked> タップエフェクト音 <span id="sTapVal" class="val">50</span></label>
@@ -179,6 +186,6 @@
 
   <div id="toast" class="hidden"></div>
 </div>
-<script src="js/app.js?v=14"></script>
+<script src="js/app.js?v=15"></script>
 </body>
 </html>
