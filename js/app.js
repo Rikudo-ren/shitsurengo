@@ -129,7 +129,7 @@ function resize(){
   buildSprites();
 }
 function circleSprite(color,ring,mid,edge,stroke){
-  const pad=noteR*0.9, d=Math.ceil((noteR*2+pad*2)*2);
+  const pad=noteR*0.5, d=Math.ceil((noteR*2+pad*2)*2);
   const c=document.createElement('canvas'); c.width=c.height=d;
   const g=c.getContext('2d'), cx=d/2, cy=d/2, R=d/2-pad;
   const glow=g.createRadialGradient(cx,cy,R*0.2,cx,cy,R+pad);
@@ -144,10 +144,10 @@ function circleSprite(color,ring,mid,edge,stroke){
     g.lineWidth=Math.max(2,R*0.1); g.strokeStyle=stroke||'rgba(255,255,255,.9)';
     g.beginPath(); g.arc(cx,cy,R,0,7); g.stroke();
   }
-  return {c, half:d/2};
+  return {c, R};
 }
 function buildSprites(){ sprites=[]; tailSprites=[]; lnSprites=[]; lnTailSprites=[];
-  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#9aa0b8','rgba(255,255,255,.9)')); tailSprites.push(circleSprite('#ffffff',true)); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); lnTailSprites.push(circleSprite(LN_COL,true)); } }
+  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); tailSprites.push(circleSprite('#ffffff',true)); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); lnTailSprites.push(circleSprite(LN_COL,true)); } }
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -404,11 +404,12 @@ function draw(now){
   if(chart&&chart.tps.length){ const tp=chart.tps[tpIdx];
     if(tp&&tp.b>0&&songMs>=tp.t){ const ph=((songMs-tp.t)/tp.b)%1; pulse=Math.max(0,1-ph*2.5); } }
   for(let l=0;l<4;l++){ const x=fieldX+l*laneWpx+laneWpx/2, down=laneCnt[l]>0||hold[l];
+    const lw=Math.max(2.5,noteR*0.09), rr=Math.max(4,noteR-lw/2);
     if(down){ ctx.fillStyle='rgba(255,255,255,.30)';
-      ctx.beginPath(); ctx.arc(x,judgeY,noteR,0,7); ctx.fill(); }
-    ctx.lineWidth=Math.max(2.5,noteR*0.09);
+      ctx.beginPath(); ctx.arc(x,judgeY,rr,0,7); ctx.fill(); }
+    ctx.lineWidth=lw;
     ctx.strokeStyle=down?'rgba(255,255,255,1)':`rgba(255,255,255,${0.55+pulse*0.3})`;
-    ctx.beginPath(); ctx.arc(x,judgeY,noteR,0,7); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(x,judgeY,rr,0,7); ctx.stroke(); }
   // bursts
   bursts=bursts.filter(b=>now-b.at<260);
   for(const b of bursts){ const k=(now-b.at)/260, x=fieldX+b.lane*laneWpx+laneWpx/2;
@@ -436,7 +437,7 @@ function draw(now){
     ctx.fillText(shortKey(S.keys[l]),fieldX+l*laneWpx+laneWpx/2,H-14); }
 }
 function drawSprite(sp,x,y){
-  const w=sp.c.width, h=sp.c.height, sc=(noteR*2+noteR*1.8)/w;
+  const w=sp.c.width, h=sp.c.height, sc=noteR/sp.R; // コア半径が正確にnoteRになる
   ctx.drawImage(sp.c,x-w*sc/2,y-h*sc/2,w*sc,h*sc);
 }
 function hexA(hex,a){ const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
