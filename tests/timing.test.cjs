@@ -31,10 +31,10 @@ for(let step=5;step<=30;step++){
       near(run('yFor(10000)'),800);
       run(`lanes=[[{t:10000,e:12000,ln:true,hs:0,ts:0}],[],[],[]];
         songMs=-99999; press(0);`);
-      assert.equal(run('counts.p'),1);
+      assert.equal(run('counts.pp'),1);
       assert.equal(run('hold[0]===lanes[0][0]'),true);
       run('AC.currentTime=startCtx+12000/rate/1000-S.offset/1000; release(0);');
-      assert.equal(run('counts.p'),2);
+      assert.equal(run('counts.pp'),2);
       assert.equal(run('hold[0]'),null);
       // 未開始のカウントダウンも同じ単位で換算。
       run('srcNode=null;');

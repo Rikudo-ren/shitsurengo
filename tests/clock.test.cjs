@@ -90,15 +90,16 @@ test('input is judged at the event timestamp, not when the handler happens to ru
   for(let f=0; f<120; f++){ set(1000+f*16, 5+f*0.016); run('syncClock(performance.now())'); }
   // 譜面時間 T にノーツ。イベントは T ちょうどに発生したが、ハンドラは 40ms 遅れて実行された。
   const tEvent=1000+119*16+8, noteT=run(`songMsAt(${tEvent})`);
-  run(`lanes=[[{t:${noteT},e:0,ln:false,hs:0,ts:1}],[],[],[]]; ptr=[0,0,0,0]; counts={p:0,gr:0,go:0,me:0,mi:0}; judged=0;`);
+  run(`lanes=[[{t:${noteT},e:0,ln:false,hs:0,ts:1}],[],[],[]]; ptr=[0,0,0,0]; counts={pp:0,p:0,gr:0,go:0,mi:0}; judged=0;`);
   set(tEvent+40, 5+119*0.016+0.048);
   run(`press(0, evTime({timeStamp:${tEvent}}))`);
-  assert.equal(run('counts.p'),1,'イベント時刻で判定すれば PERFECT');
+  assert.equal(run('counts.pp'),1,'イベント時刻で判定すれば PERFECT+');
   near(run('hitErrs[0].dt'),0,0.5,'ズレは 0ms');
-  // 比較: ハンドラ実行時刻で判定すると 40ms 遅れ = GREAT になってしまう
-  run(`lanes=[[{t:${noteT},e:0,ln:false,hs:0,ts:1}],[],[],[]]; ptr=[0,0,0,0]; counts={p:0,gr:0,go:0,me:0,mi:0};`);
+  // 比較: ハンドラ実行時刻で判定すると 40ms 遅れ = PERFECT(旧GREAT窓) になってしまう
+  run(`lanes=[[{t:${noteT},e:0,ln:false,hs:0,ts:1}],[],[],[]]; ptr=[0,0,0,0]; counts={pp:0,p:0,gr:0,go:0,mi:0};`);
   run('press(0)');
-  assert.equal(run('counts.gr'),1);
+  assert.equal(run('counts.p'),1);
+  assert.equal(run('judgePop.early'),'SLOW','Perfect 帯では FAST/SLOW を必ず表示');
 });
 
 test('evTime falls back to performance.now() for implausible timestamps',()=>{

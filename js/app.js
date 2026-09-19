@@ -13,16 +13,19 @@ if(S.res!=='auto'&&S.res!=='high'&&S.res!=='low')S.res='auto';
 let saveT=null;
 function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.setItem('vsrg_s1',JSON.stringify(S));}catch(e){} },200); }
 
-/* ============ JUDGE WINDOWS (fixed) ============ */
-const W_P=34, W_GR=67, W_GO=97, W_ME=122;
-const JC=['#00e5ff','#5dff8f','#ffd54a','#ff9a3d','#ff4d6d'];
-const JN=['PERFECT','GREAT','GOOD','MEH','MISS'];
+/* ============ JUDGE WINDOWS (fixed) ============
+ * 窓幅は従来どおり。表示名だけ押し上げ:
+ *   ±34 Perfect+ / ±67 Perfect / ±97 Great / ±122 Good / Miss
+ * Perfect(旧Great窓)も ACC・SCORE は 300 扱い → 精度が以前より出しやすい */
+const W_P=34, W_GR=67, W_GO=97, W_GD=122;
+const JC=['#ffffff','#00e5ff','#5dff8f','#ffd54a','#ff4d6d'];
+const JN=['PERFECT+','PERFECT','GREAT','GOOD','MISS'];
 
 /* ============ STATE ============ */
 let SONGS=[], song=null, diffIdx=S.lastDiff|0;
 let chartCache={}, audioCache={};
 let chart=null, lanes=[[],[],[],[]], ptr=[0,0,0,0];
-let totalJud=0, judged=0, counts={p:0,gr:0,go:0,me:0,mi:0}, combo=0, maxCombo=0;
+let totalJud=0, judged=0, counts={pp:0,p:0,gr:0,go:0,mi:0}, combo=0, maxCombo=0;
 let state='select', rate=1, approach=750, approachC=750, lastT=0;
 let songMs=-99999, startCtx=0, leadSec=2;
 let hold=[null,null,null,null], laneCnt=[0,0,0,0], laneLit=[0,0,0,0];
@@ -251,8 +254,8 @@ function buildSprites(){ sprites=[];
   for(let j=0;j<5;j++)txt.judge.push(textSprite(JN[j],26,900,JC[j],true,22));
   for(let d=0;d<10;d++)txt.digit.push(textSprite(String(d),30,900,'rgba(255,255,255,.95)',false,1));
   txt.combo=textSprite('COMBO',10,700,'rgba(154,163,199,.9)',false,2);
-  txt.fast=textSprite('FAST',11,700,'rgba(255,255,255,.75)',false,2);
-  txt.slow=textSprite('SLOW',11,700,'rgba(255,255,255,.75)',false,2);
+  txt.fast=textSprite('FAST',11,700,'rgba(120,200,255,.9)',false,2);   // 早い=寒色 / 遅い=暖色 で打ち分けを一目で
+  txt.slow=textSprite('SLOW',11,700,'rgba(255,170,120,.9)',false,2);
   txt.rel=textSprite('EARLY RELEASE',11,700,'rgba(255,255,255,.75)',false,2);
   // レーン点灯用グラデーション（毎フレーム生成しない）
   if(ctx&&ctx.createLinearGradient){
@@ -283,13 +286,14 @@ function buildLanes(){
   for(const n of chart.notes){ n.hs=0; n.ts=n.ln?0:1; lanes[n.lane].push(n); }
   let ln=0; for(const n of chart.notes)if(n.ln)ln++;
   totalJud=chart.notes.length+ln;
-  judged=0; counts={p:0,gr:0,go:0,me:0,mi:0}; combo=0; maxCombo=0;
+  judged=0; counts={pp:0,p:0,gr:0,go:0,mi:0}; combo=0; maxCombo=0;
   lastT=chart.notes.length?chart.notes[chart.notes.length-1].t:0;
   const e=chart.notes.reduce((m,n)=>Math.max(m,n.ln?n.e:n.t),0); lastT=Math.max(lastT,e);
   tpIdx=0; judgePop.t=-1; hitErrs=[]; errSum=0; errN=0;
 }
-const scoreNow=()=> totalJud?Math.floor(1000000*(counts.p*300+counts.gr*200+counts.go*100+counts.me*50)/(300*totalJud)):0;
-const accNow=()=>{ const w=counts.p*300+counts.gr*200+counts.go*100+counts.me*50;
+// Perfect+ と Perfect はどちらも 300。Great=200 / Good=100（旧 Good/Meh 窓を一段繰り上げ）
+const scoreNow=()=> totalJud?Math.floor(1000000*(counts.pp*300+counts.p*300+counts.gr*200+counts.go*100)/(300*totalJud)):0;
+const accNow=()=>{ const w=counts.pp*300+counts.p*300+counts.gr*200+counts.go*100;
   return judged?w/(300*judged)*100:100; };
 function gradeFor(a){ if(a>=100-1e-9)return 'SS'; if(a>95)return 'S'; if(a>90)return 'A'; if(a>80)return 'B'; if(a>70)return 'C'; return 'D'; }
 
@@ -341,8 +345,8 @@ function finish(){
   $('resScore').textContent=sc.toLocaleString();
   $('resAcc').textContent=ac.toFixed(2)+'%';
   $('resNew').classList.toggle('hidden',!isNew);
-  $('cP').textContent=counts.p; $('cGr').textContent=counts.gr; $('cGo').textContent=counts.go;
-  $('cMe').textContent=counts.me; $('cMi').textContent=counts.mi; $('cCb').textContent=maxCombo+' / '+totalJud;
+  $('cPp').textContent=counts.pp; $('cP').textContent=counts.p; $('cGr').textContent=counts.gr;
+  $('cGo').textContent=counts.go; $('cMi').textContent=counts.mi; $('cCb').textContent=maxCombo+' / '+totalJud;
   const me=errN?errSum/errN:0;
   $('resStats').textContent=`SCROLL ${S.scroll} · OFFSET ${S.offset>0?'+':''}${S.offset}ms · 音声遅延補正 ${Math.round(latMs)}ms · 平均ズレ ${me>0?'+':''}${me.toFixed(0)}ms${errN?(me<-8?'(FAST→オフセット+)':me>8?'(SLOW→オフセット−)':''):''} · ${totalJud} JUDGES`;
   show('screenResult'); updateBestLine();
@@ -351,13 +355,14 @@ function quitToSelect(){ stopAudio(); state='select'; paused=false; $('pauseMenu
 
 /* ============ INPUT — ultra low latency (no asset) ============ */
 function laneFromX(x){ const l=Math.floor((x-fieldX)/laneWpx); return clamp(l,0,3); }
-function judgeOf(adt){ return adt<=W_P?0:adt<=W_GR?1:adt<=W_GO?2:adt<=W_ME?3:4; }
+function judgeOf(adt){ return adt<=W_P?0:adt<=W_GR?1:adt<=W_GO?2:adt<=W_GD?3:4; }
 function applyHit(j,dt){
-  if(j===0)counts.p++; else if(j===1)counts.gr++; else if(j===2)counts.go++;
-  else if(j===3)counts.me++; else counts.mi++;
+  if(j===0)counts.pp++; else if(j===1)counts.p++; else if(j===2)counts.gr++;
+  else if(j===3)counts.go++; else counts.mi++;
   judged++;
   if(j===4){ combo=0; } else { combo++; if(combo>maxCombo)maxCombo=combo; }
   const now=performance.now();
+  // ±8ms 超で FAST/SLOW を併記 → Perfect(±34〜67ms) 帯は必ず打ち分けが出る。Perfect+ はほぼ中央のみ無印
   judgePop={t:now,j,early:dt<-8?'FAST':dt>8?'SLOW':''};
   if(j!==4){ hitErrs.push({dt,at:now}); if(hitErrs.length>HE_N)hitErrs.shift(); errSum+=dt; errN++; }
 }
@@ -380,7 +385,7 @@ function press(lane,t){
   for(let i=ptr[lane]; i<arr.length && i<ptr[lane]+6; i++){
     const n=arr[i]; if(n.hs!==0)continue;
     const dt=inputMs-n.t;
-    if(dt<-W_ME)break; if(dt>W_ME)continue;
+    if(dt<-W_GD)break; if(dt>W_GD)continue;
     cand=n; break;
   }
   if(!cand){ immediateDraw(); return; }
@@ -397,7 +402,7 @@ function release(lane,t){
   if(state!=='playing'||paused){ if(state==='playing') immediateDraw(); return; }
   const n=hold[lane]; if(!n){ immediateDraw(); return; }
   const dt=songMsAt(t)-n.e;
-  if(dt<-W_ME){ n.ts=2; counts.mi++; judged++; combo=0;
+  if(dt<-W_GD){ n.ts=2; counts.mi++; judged++; combo=0;
     judgePop={t:performance.now(),j:4,early:'EARLY RELEASE'}; }
   else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt); }
   hold[lane]=null;
@@ -463,7 +468,7 @@ function loop(now){
     while(ptr[l]<arr.length){
       const n=arr[ptr[l]];
       if(n.hs!==0){ptr[l]++;continue;}
-      if(songMs-n.t>W_ME){
+      if(songMs-n.t>W_GD){
         n.hs=2; applyHit(4,0);
         if(n.ln){ n.ts=2; counts.mi++; judged++; combo=0; }
         ptr[l]++;
@@ -471,7 +476,8 @@ function loop(now){
     }
   }
   for(let l=0;l<4;l++){ const n=hold[l];
-    if(n&&songMs>=n.e){ n.ts=1; counts.p++; judged++; combo++; if(combo>maxCombo)maxCombo=combo; hold[l]=null; } }
+    // LN終端まで保持 → Perfect+（満点）
+    if(n&&songMs>=n.e){ n.ts=1; counts.pp++; judged++; combo++; if(combo>maxCombo)maxCombo=combo; hold[l]=null; } }
   for(let l=0;l<4;l++)laneLit[l]=Math.max(0,laneLit[l]-dt*5);
   if(chart&&chart.tps.length){ while(tpIdx<chart.tps.length-1&&chart.tps[tpIdx+1].t<=songMs)tpIdx++;
     while(tpIdx>0&&chart.tps[tpIdx].t>songMs)tpIdx--; }
@@ -599,15 +605,15 @@ function draw(now){
   // ---- hit error bar: 直近の入力ズレ（左=FAST / 右=SLOW）----
   if(hitErrs.length){
     const by=Math.min(judgeY+noteR+16,H-52), hw=Math.min(fieldW*0.42,150);
-    const seg=(w,col,a)=>{ ctx.globalAlpha=a; ctx.fillStyle=col; ctx.fillRect(cx-hw*w/W_ME,by-1.5,2*hw*w/W_ME,3); };
-    seg(W_ME,JC[3],0.25); seg(W_GO,JC[2],0.3); seg(W_GR,JC[1],0.3); seg(W_P,JC[0],0.4);
+    const seg=(w,col,a)=>{ ctx.globalAlpha=a; ctx.fillStyle=col; ctx.fillRect(cx-hw*w/W_GD,by-1.5,2*hw*w/W_GD,3); };
+    seg(W_GD,JC[3],0.25); seg(W_GO,JC[2],0.3); seg(W_GR,JC[1],0.3); seg(W_P,JC[0],0.4);
     let sum=0, cnt=0;
     for(let i=0;i<hitErrs.length;i++){ const h=hitErrs[i]; const age=now-h.at; if(age>3000)continue;
       const a=age<2000?0.85:0.85*(1-(age-2000)/1000);
       ctx.globalAlpha=a; ctx.fillStyle=JC[judgeOf(Math.abs(h.dt))];
-      ctx.fillRect(cx+clamp(h.dt,-W_ME,W_ME)/W_ME*hw-1,by-6,2,12);
+      ctx.fillRect(cx+clamp(h.dt,-W_GD,W_GD)/W_GD*hw-1,by-6,2,12);
       sum+=h.dt; cnt++; }
-    if(cnt){ ctx.globalAlpha=0.95; ctx.fillStyle='#fff'; ctx.fillRect(cx+clamp(sum/cnt,-W_ME,W_ME)/W_ME*hw-1.5,by-9,3,18); }
+    if(cnt){ ctx.globalAlpha=0.95; ctx.fillStyle='#fff'; ctx.fillRect(cx+clamp(sum/cnt,-W_GD,W_GD)/W_GD*hw-1.5,by-9,3,18); }
     ctx.globalAlpha=1;
   }
   lastDrawAt=performance.now();
