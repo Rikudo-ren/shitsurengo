@@ -88,6 +88,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .load-status{text-align:center;font-size:12px;color:var(--gold);min-height:16px}
 /* game */
 body.playing #topbar{display:none} /* プレイ中はロゴ/⚙タグを消して画面上部をノーツに明け渡す */
+body.playing #bgBlur{display:none} /* プレイ中は全画面ぼかしレイヤー(GPU負荷大)を外す */
 #screenGame{overflow:hidden}
 #gameBg{position:absolute;inset:0;background:#000}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
@@ -103,7 +104,7 @@ body.playing #topbar{display:none} /* プレイ中はロゴ/⚙タグを消し�
 .hud-right{pointer-events:auto;flex:none}
 #btnPause{background:rgba(255,255,255,.07);backdrop-filter:none;-webkit-backdrop-filter:none}
 #hudBar{position:absolute;left:8px;right:8px;bottom:calc(2px + var(--safe-b));height:3px;background:rgba(255,255,255,.12);border-radius:99px;overflow:hidden;pointer-events:none}
-#hudProg{height:100%;width:0;background:#fff;border-radius:99px}
+#hudProg{height:100%;width:100%;background:#fff;border-radius:99px;transform-origin:left center;transform:scaleX(0);will-change:transform} /* width変更(レイアウト)ではなくtransform(合成のみ)で更新 */
 #countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:52px;font-weight:900;letter-spacing:.2em;color:#fff;text-shadow:0 0 30px rgba(0,229,255,.6);pointer-events:none}
 #pauseMenu{position:absolute;inset:0;background:rgba(5,8,18,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:5}
 .pause-card{padding:22px;width:min(420px,90vw);text-align:center}
@@ -149,6 +150,10 @@ body.playing #topbar{display:none} /* プレイ中はロゴ/⚙タグを消し�
 .set-group h3{font-size:12px;color:var(--dim);letter-spacing:.12em;margin:4px 0 6px;text-transform:uppercase}
 .set-group label{font-size:13px;display:block;margin-top:6px}
 .set-group .check{display:flex;align-items:center;gap:8px}
+.set-group .row-sel{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.set-group select{background:rgba(255,255,255,.08);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:8px 10px;font-size:13px;font-family:inherit;max-width:60%}
+.set-group select option{background:#11162a;color:var(--txt)}
+.hint.lat{color:var(--acc);margin-top:4px}
 .set-group input[type=checkbox]{width:20px;height:20px;accent-color:var(--acc)}
 .key-row{display:flex;gap:8px;margin-top:6px}
 .key-cap{flex:1;border:1px solid var(--line);background:rgba(255,255,255,.06);border-radius:12px;padding:12px 4px;text-align:center;font-weight:800;cursor:pointer;font-size:14px}
