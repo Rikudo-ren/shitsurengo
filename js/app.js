@@ -26,7 +26,6 @@ let state='select', rate=1, approach=750, lastT=0;
 let songMs=-99999, startCtx=0, leadSec=2;
 let hold=[null,null,null,null], laneCnt=[0,0,0,0], laneLit=[0,0,0,0];
 let judgePop={t:-1,txt:'',col:'#fff',early:''};
-let bursts=[]; // {lane,at}
 let paused=false, finished=false;
 let lastHUD={s:'',a:'',p:-1};
 let tpIdx=0;
@@ -173,7 +172,7 @@ function buildLanes(){
   judged=0; counts={p:0,gr:0,go:0,me:0,mi:0}; combo=0; maxCombo=0;
   lastT=chart.notes.length?chart.notes[chart.notes.length-1].t:0;
   const e=chart.notes.reduce((m,n)=>Math.max(m,n.ln?n.e:n.t),0); lastT=Math.max(lastT,e);
-  bursts=[]; tpIdx=0; judgePop.t=-1;
+  tpIdx=0; judgePop.t=-1;
 }
 const scoreNow=()=> totalJud?Math.floor(1000000*(counts.p*300+counts.gr*200+counts.go*100+counts.me*50)/(300*totalJud)):0;
 const accNow=()=>{ const w=counts.p*300+counts.gr*200+counts.go*100+counts.me*50;
@@ -254,7 +253,6 @@ function press(lane){
   if(!cand)return; // ghost: ペナルティなし
   const dt=songMs-cand.t, j=judgeOf(Math.abs(dt));
   cand.hs=1; applyHit(j,dt);
-  bursts.push({lane,at:performance.now()}); if(bursts.length>24)bursts.shift();
   if(cand.ln&&j!==4)hold[lane]=cand;
   else if(cand.ln&&j===4){ cand.ts=2; counts.mi++; judged++; combo=0; }
   while(ptr[lane]<arr.length&&arr[ptr[lane]].hs!==0)ptr[lane]++;
@@ -266,8 +264,7 @@ function release(lane){
   const dt=songMs-n.e;
   if(dt<-W_ME){ n.ts=2; counts.mi++; judged++; combo=0;
     judgePop={t:performance.now(),txt:'MISS',col:JC[4],early:'EARLY RELEASE'}; }
-  else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt);
-    bursts.push({lane,at:performance.now()}); }
+  else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt); }
   hold[lane]=null;
 }
 window.addEventListener('keydown',e=>{
@@ -365,12 +362,11 @@ function draw(now){
     // hold中
     const h=hold[l];
     if(h){
-      const ty=yFor(h.e), top=Math.min(ty,judgeY), hh=Math.abs(judgeY-ty)+noteR*0.4;
+      const ty=yFor(h.e), bot=judgeY+noteR*0.4, r=bodyW/2;
       ctx.fillStyle=hexA(LN_COL,0.55);
-      ctx.fillRect(x-bodyW/2,top,bodyW,hh);
-      ctx.beginPath(); ctx.arc(x,ty,bodyW/2,0,7); ctx.fill();
-      ctx.fillStyle='rgba(225,228,240,.35)';
-      ctx.fillRect(x-2,top,4,hh);
+      ctx.beginPath();
+      ctx.moveTo(x-r,bot); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,bot);
+      ctx.closePath(); ctx.fill();
       // 保持エフェクト
       ctx.fillStyle=hexA(LN_COL,0.4);
       ctx.beginPath(); ctx.arc(x,judgeY,noteR*1.25,0,7); ctx.fill();
@@ -385,13 +381,13 @@ function draw(now){
       if(hy>judgeY+120)continue;
       if(hy<-80&&(!n.ln||yFor(n.e)<-80))continue;
       if(n.ln){
-        const ty=judgeY-((n.e-songMs)/approach)*span;
+        const ty=judgeY-((n.e-songMs)/approach)*span, r=bodyW/2;
         ctx.fillStyle=hexA(LN_COL,0.45);
-        const y0=clamp(Math.min(hy,ty),-60,H+60), y1=clamp(Math.max(hy,ty),-60,H+60);
-        ctx.fillRect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0));
-        if(ty>-80&&ty<H+80){ ctx.beginPath(); ctx.arc(x,ty,bodyW/2,0,7); ctx.fill(); }
-        ctx.fillStyle='rgba(225,228,240,.28)';
-        ctx.fillRect(x-2,y0,4,Math.max(4,y1-y0));
+        const y1=clamp(Math.max(hy,ty),-60,H+60);
+        ctx.beginPath();
+        if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.closePath(); }
+        else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
+        ctx.fill();
       }
       const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
       ctx.globalAlpha=clamp(a,0,1);
@@ -410,11 +406,6 @@ function draw(now){
     ctx.lineWidth=lw;
     ctx.strokeStyle=down?'rgba(255,255,255,1)':`rgba(255,255,255,${0.55+pulse*0.3})`;
     ctx.beginPath(); ctx.arc(x,judgeY,rr,0,7); ctx.stroke(); }
-  // bursts
-  bursts=bursts.filter(b=>now-b.at<260);
-  for(const b of bursts){ const k=(now-b.at)/260, x=fieldX+b.lane*laneWpx+laneWpx/2;
-    ctx.strokeStyle=hexA(LANE_COL[b.lane],(1-k)*0.9); ctx.lineWidth=3;
-    ctx.beginPath(); ctx.arc(x,judgeY,noteR*(0.7+k*1.1),0,7); ctx.stroke(); }
   // judgement + combo
   const ja=now-judgePop.t;
   if(judgePop.t>0&&ja<700){
