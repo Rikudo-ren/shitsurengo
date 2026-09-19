@@ -115,7 +115,7 @@ function parseOsu(text){
 const cv=$('cv'), ctx=cv.getContext('2d',{alpha:true});
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
 let sprites=[], tailSprites=[];
-const LANE_COL=['#00e5ff','#ff4dd8','#ff4dd8','#00e5ff'];
+const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2);
   const r=cv.getBoundingClientRect(); W=Math.max(50,r.width||innerWidth); H=Math.max(50,r.height||innerHeight);
@@ -124,7 +124,7 @@ function resize(){
   fieldW=Math.min(base*(S.laneW/100), W*0.98);
   fieldX=(W-fieldW)/2; laneWpx=fieldW/4;
   judgeY=H*(S.judgePos/100); topY=64;
-  noteR=clamp(laneWpx*0.5*0.88*(S.noteSize/100),10,laneWpx*0.52);
+  noteR=clamp(laneWpx*0.5*(S.noteSize/100),10,laneWpx*0.65); // 100% = diameter fits lane
   buildSprites();
 }
 function circleSprite(color,ring){
@@ -138,7 +138,7 @@ function circleSprite(color,ring){
     g.fillStyle='rgba(255,255,255,.85)'; g.beginPath(); g.arc(cx,cy,R*0.22,0,7); g.fill();
   }else{
     const core=g.createRadialGradient(cx-R*0.3,cy-R*0.35,R*0.1,cx,cy,R);
-    core.addColorStop(0,'#ffffff'); core.addColorStop(0.35,color); core.addColorStop(1,'#0b1026');
+    core.addColorStop(0,'#ffffff'); core.addColorStop(0.72,'#ffffff'); core.addColorStop(1,'#9aa0b8');
     g.fillStyle=core; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
     g.lineWidth=Math.max(2,R*0.1); g.strokeStyle='rgba(255,255,255,.9)';
     g.beginPath(); g.arc(cx,cy,R,0,7); g.stroke();
@@ -192,7 +192,7 @@ async function startPlay(){
     await loadAudio(song.audio);
     if(bgmGain)bgmGain.gain.value=S.bgm/100;
     show('screenGame'); state='ready'; resize();
-    $('gameBg').style.backgroundImage=`url("${song.thumb}")`;
+    $('gameBg').style.backgroundImage='none';
     $('hudSong').textContent=`${song.title} [${song.diffs[diffIdx].name}] ${rate.toFixed(1)}x`;
     laneCnt=[0,0,0,0]; laneLit=[0,0,0,0];
     lastHUD={s:'',a:'',p:-1}; lastFrame=0;
@@ -342,12 +342,10 @@ function draw(now){
   ctx.clearRect(0,0,W,H);
   const span=judgeY-topY;
   // field bg
-  ctx.fillStyle='rgba(8,12,26,.78)';
+  ctx.fillStyle='#000000';
   ctx.fillRect(fieldX,0,fieldW,H);
   for(let l=0;l<4;l++){
     const x=fieldX+l*laneWpx;
-    ctx.fillStyle=l%2?'rgba(255,255,255,.028)':'rgba(255,255,255,.055)';
-    ctx.fillRect(x,0,laneWpx,H);
     const lit=laneLit[l];
     if(laneCnt[l]>0||lit>0.02){
       const a=laneCnt[l]>0?0.22:lit*0.18;
@@ -399,16 +397,16 @@ function draw(now){
       ctx.globalAlpha=1;
     }
   }
-  // judge line (beat pulse)
+  // judge rings (circle frames, beat pulse)
   let pulse=0;
   if(chart&&chart.tps.length){ const tp=chart.tps[tpIdx];
     if(tp&&tp.b>0&&songMs>=tp.t){ const ph=((songMs-tp.t)/tp.b)%1; pulse=Math.max(0,1-ph*2.5); } }
-  ctx.fillStyle=`rgba(0,229,255,${0.5+pulse*0.4})`;
-  ctx.fillRect(fieldX,judgeY-1.5,fieldW,3);
-  ctx.fillStyle='rgba(255,255,255,.9)'; ctx.fillRect(fieldX,judgeY-0.5,fieldW,1);
-  for(let l=0;l<4;l++){ const x=fieldX+l*laneWpx+laneWpx/2;
-    ctx.fillStyle=laneCnt[l]>0?LANE_COL[l]:'rgba(255,255,255,.25)';
-    ctx.beginPath(); ctx.arc(x,judgeY+22,7,0,7); ctx.fill(); }
+  for(let l=0;l<4;l++){ const x=fieldX+l*laneWpx+laneWpx/2, down=laneCnt[l]>0||hold[l];
+    if(down){ ctx.fillStyle='rgba(255,255,255,.30)';
+      ctx.beginPath(); ctx.arc(x,judgeY,noteR,0,7); ctx.fill(); }
+    ctx.lineWidth=Math.max(2.5,noteR*0.09);
+    ctx.strokeStyle=down?'rgba(255,255,255,1)':`rgba(255,255,255,${0.55+pulse*0.3})`;
+    ctx.beginPath(); ctx.arc(x,judgeY,noteR,0,7); ctx.stroke(); }
   // bursts
   bursts=bursts.filter(b=>now-b.at<260);
   for(const b of bursts){ const k=(now-b.at)/260, x=fieldX+b.lane*laneWpx+laneWpx/2;

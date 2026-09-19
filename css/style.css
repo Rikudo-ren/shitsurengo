@@ -78,18 +78,18 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .load-status{text-align:center;font-size:12px;color:var(--gold);min-height:16px}
 /* game */
 #screenGame{overflow:hidden}
-#gameBg{position:absolute;inset:0;background:center/cover;filter:blur(50px) brightness(.3);opacity:.8}
+#gameBg{position:absolute;inset:0;background:#000}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #hud{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;justify-content:space-between;padding:calc(8px + var(--safe-t)) 12px 0;pointer-events:none}
 .hud-left{pointer-events:none}
-#hudScore{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.04em;text-shadow:0 2px 12px rgba(0,229,255,.5)}
+#hudScore{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.04em;text-shadow:0 2px 12px rgba(255,255,255,.35)}
 #hudAcc{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
 .hud-center{flex:1;text-align:center;padding-top:4px}
 #hudSong{font-size:11px;color:var(--dim);letter-spacing:.06em}
 .hud-right{pointer-events:auto}
 #hudBar{position:absolute;top:calc(58px + var(--safe-t));left:12px;right:12px;height:3px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;pointer-events:none}
-#hudProg{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:99px}
-#countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:900;color:#fff;text-shadow:0 0 40px var(--acc);pointer-events:none}
+#hudProg{height:100%;width:0;background:#fff;border-radius:99px}
+#countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:900;color:#fff;text-shadow:0 0 40px #fff;pointer-events:none}
 #pauseMenu{position:absolute;inset:0;background:rgba(5,8,18,.7);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:5}
 .pause-card{padding:22px;width:min(420px,90vw);text-align:center}
 .pause-card h2{margin:0 0 14px;font-size:20px;letter-spacing:.1em}
