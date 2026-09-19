@@ -113,7 +113,7 @@ function parseOsu(text){
 /* ============ CANVAS / LAYOUT ============ */
 const cv=$('cv'), ctx=cv.getContext('2d',{alpha:true});
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
-let sprites=[], lnSprites=[];
+let sprites=[];
 const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
 const LN_COL='#a9aebf'; // long-note gray
 function resize(){
@@ -145,8 +145,8 @@ function circleSprite(color,ring,mid,edge,stroke){
   }
   return {c, R};
 }
-function buildSprites(){ sprites=[]; lnSprites=[];
-  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); } }
+function buildSprites(){ sprites=[];
+  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); } }
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -382,17 +382,21 @@ function draw(now){
       if(hy<-80&&(!n.ln||yFor(n.e)<-80))continue;
       if(n.ln){
         const ty=judgeY-((n.e-songMs)/approach)*span, r=bodyW/2;
+        const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
+        ctx.globalAlpha=clamp(a,0,1);
         ctx.fillStyle=hexA(LN_COL,0.45);
         const y1=clamp(Math.max(hy,ty),-60,H+60);
         ctx.beginPath();
-        if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.closePath(); }
+        if(ty>-80&&ty<H+80){ ctx.moveTo(x-r,y1); ctx.lineTo(x-r,ty); ctx.arc(x,ty,r,Math.PI,0); ctx.lineTo(x+r,y1); ctx.arc(x,y1,r,0,Math.PI); ctx.closePath(); }
         else { const y0=clamp(Math.min(hy,ty),-60,H+60); ctx.rect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0)); }
-        ctx.fill();
+        ctx.fill(); ctx.globalAlpha=1;
       }
-      const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
-      ctx.globalAlpha=clamp(a,0,1);
-      drawSprite(n.ln?lnSprites[l]:sprites[l],x,hy);
-      ctx.globalAlpha=1;
+      else {
+        const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
+        ctx.globalAlpha=clamp(a,0,1);
+        drawSprite(sprites[l],x,hy);
+        ctx.globalAlpha=1;
+      }
     }
   }
   // judge rings (circle frames, beat pulse)
