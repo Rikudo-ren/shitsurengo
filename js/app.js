@@ -445,17 +445,27 @@ function shortKey(c){ return c.startsWith('Key')?c.slice(3):c.startsWith('Digit'
 
 /* ============ SELECT UI ============ */
 let songIdx=0;
-function renderSongs(){
-  const row=$('songRow');
-  if(SONGS.length<=1){ row.classList.add('hidden'); return; }
-  row.classList.remove('hidden'); row.innerHTML='';
+const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function getBest(){ try{return JSON.parse(localStorage.getItem('vsrg_best_v1')||'{}');}catch(e){return {};} }
+function renderSongList(){
+  const list=$('songList'); list.innerHTML='';
+  const best=getBest();
   SONGS.forEach((s,i)=>{
     const b=document.createElement('button');
-    b.className='song-btn'+(i===songIdx?' on':''); b.textContent='♪ '+s.title;
-    b.onclick=()=>{ songIdx=i; song=SONGS[i]; diffIdx=clamp(diffIdx,0,song.diffs.length-1);
+    b.className='song-item'+(i===songIdx?' on':'');
+    const badges=s.diffs.map(d=>{
+      const r=best[s.id+'|'+d.name];
+      return `<span class="bd${r?' done':''}">${escapeHtml(d.level)}</span>`;
+    }).join('');
+    b.innerHTML=`<img src="${s.thumb}" alt="" loading="lazy" draggable="false">`
+      +`<span class="si-meta"><span class="si-title">${escapeHtml(s.title)}</span>`
+      +`<span class="si-artist">${escapeHtml(s.artist)}</span></span>`
+      +`<span class="si-badges">${badges}</span>`;
+    b.onclick=()=>{ if(songIdx===i)return; songIdx=i; song=SONGS[i];
+      diffIdx=clamp(diffIdx,0,song.diffs.length-1);
       $('bgBlur').style.backgroundImage=`url("${song.thumb}")`;
-      renderSongs(); renderDiffs(); refreshSongInfo(); };
-    row.appendChild(b);
+      renderSongList(); renderDiffs(); refreshSongInfo(); };
+    list.appendChild(b);
   });
 }
 function renderDiffs(){
@@ -463,7 +473,7 @@ function renderDiffs(){
   song.diffs.forEach((d,i)=>{
     const b=document.createElement('button');
     b.className='diff-btn'+(i===diffIdx?' on':''); b.dataset.d=i;
-    b.innerHTML=`<span class="dn">${d.name}</span><span class="lv">Lv.${d.level}</span>`;
+    b.innerHTML=`<span class="dn">${escapeHtml(d.name)}</span><span class="lv">Lv.${escapeHtml(d.level)}</span>`;
     b.onclick=()=>{ diffIdx=i; S.lastDiff=i; save(); renderDiffs(); refreshSongInfo(); };
     row.appendChild(b);
   });
@@ -520,12 +530,12 @@ async function init(){
     SONGS=j.songs||[];
   }catch(e){ SONGS=[]; }
   if(!SONGS.length){ // フォールバック（songs.jsonが無い場合も失恋後で遊べる）
-    SONGS=[{id:'shitsurengo',title:'失恋後',artist:'Rikudo-ren',audio:'songs/失恋後/失恋後.mp3',
+    SONGS=[{id:'shitsurengo',title:'失恋後',artist:'櫻優',audio:'songs/失恋後/失恋後.mp3',
       thumb:'songs/失恋後/サムネイル.png',
       diffs:[{name:'Easy',level:5,file:'songs/失恋後/easy.osu'},{name:'Normal',level:9,file:'songs/失恋後/normal.osu'},{name:'Hard',level:11,file:'songs/失恋後/hard.osu'}]}];
   }
   song=SONGS[0]; diffIdx=clamp(S.lastDiff|0,0,song.diffs.length-1); rate=S.rate;
-  renderSongs(); renderDiffs(); syncSettingsUI(); refreshSongInfo(); resize();
+  renderSongList(); renderDiffs(); syncSettingsUI(); refreshSongInfo(); resize();
   setTimeout(resize,300);
   // select bindings
   $('btnStart').onclick=startPlay;

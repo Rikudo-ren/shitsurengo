@@ -39,7 +39,7 @@ python3 -m http.server 8901
     {
       "id": "shitsurengo",
       "title": "失恋後",
-      "artist": "Rikudo-ren",
+      "artist": "櫻優",
       "audio": "songs/失恋後/失恋後.mp3",
       "thumb": "songs/失恋後/サムネイル.png",
       "diffs": [
