@@ -114,8 +114,9 @@ function parseOsu(text){
 /* ============ CANVAS / LAYOUT ============ */
 const cv=$('cv'), ctx=cv.getContext('2d',{alpha:true});
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
-let sprites=[], tailSprites=[];
+let sprites=[], tailSprites=[], lnSprites=[], lnTailSprites=[];
 const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
+const LN_COL='#a9aebf'; // long-note gray
 function resize(){
   DPR=Math.min(window.devicePixelRatio||1,2);
   const r=cv.getBoundingClientRect(); W=Math.max(50,r.width||innerWidth); H=Math.max(50,r.height||innerHeight);
@@ -127,7 +128,7 @@ function resize(){
   noteR=clamp(laneWpx*0.5*(S.noteSize/100),10,laneWpx*0.65); // 100% = diameter fits lane
   buildSprites();
 }
-function circleSprite(color,ring){
+function circleSprite(color,ring,mid,edge,stroke){
   const pad=noteR*0.9, d=Math.ceil((noteR*2+pad*2)*2);
   const c=document.createElement('canvas'); c.width=c.height=d;
   const g=c.getContext('2d'), cx=d/2, cy=d/2, R=d/2-pad;
@@ -138,14 +139,15 @@ function circleSprite(color,ring){
     g.fillStyle='rgba(255,255,255,.85)'; g.beginPath(); g.arc(cx,cy,R*0.22,0,7); g.fill();
   }else{
     const core=g.createRadialGradient(cx-R*0.3,cy-R*0.35,R*0.1,cx,cy,R);
-    core.addColorStop(0,'#ffffff'); core.addColorStop(0.72,'#ffffff'); core.addColorStop(1,'#9aa0b8');
+    core.addColorStop(0,'#ffffff'); core.addColorStop(0.72,mid||color); core.addColorStop(1,edge||color);
     g.fillStyle=core; g.beginPath(); g.arc(cx,cy,R,0,7); g.fill();
-    g.lineWidth=Math.max(2,R*0.1); g.strokeStyle='rgba(255,255,255,.9)';
+    g.lineWidth=Math.max(2,R*0.1); g.strokeStyle=stroke||'rgba(255,255,255,.9)';
     g.beginPath(); g.arc(cx,cy,R,0,7); g.stroke();
   }
   return {c, half:d/2};
 }
-function buildSprites(){ sprites=[]; tailSprites=[]; for(let i=0;i<4;i++){ sprites.push(circleSprite(LANE_COL[i],false)); tailSprites.push(circleSprite(LANE_COL[i],true)); } }
+function buildSprites(){ sprites=[]; tailSprites=[]; lnSprites=[]; lnTailSprites=[];
+  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#9aa0b8','rgba(255,255,255,.9)')); tailSprites.push(circleSprite('#ffffff',true)); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); lnTailSprites.push(circleSprite(LN_COL,true)); } }
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -364,13 +366,13 @@ function draw(now){
     const h=hold[l];
     if(h){
       const ty=yFor(h.e);
-      ctx.fillStyle=hexA(LANE_COL[l],0.5);
+      ctx.fillStyle=hexA(LN_COL,0.55);
       ctx.fillRect(x-bodyW/2,Math.min(ty,judgeY),bodyW,Math.abs(judgeY-ty)+noteR*0.4);
-      ctx.fillStyle='rgba(255,255,255,.55)';
+      ctx.fillStyle='rgba(225,228,240,.6)';
       ctx.fillRect(x-2,Math.min(ty,judgeY),4,Math.abs(judgeY-ty)+noteR*0.4);
-      drawSprite(tailSprites[l],x,ty);
+      drawSprite(lnTailSprites[l],x,ty);
       // 保持エフェクト
-      ctx.fillStyle=hexA(LANE_COL[l],0.35);
+      ctx.fillStyle=hexA(LN_COL,0.4);
       ctx.beginPath(); ctx.arc(x,judgeY,noteR*1.25,0,7); ctx.fill();
     }
     for(let i=ptr[l];i<arr.length;i++){
@@ -384,16 +386,16 @@ function draw(now){
       if(hy<-80&&(!n.ln||yFor(n.e)<-80))continue;
       if(n.ln){
         const ty=judgeY-((n.e-songMs)/approach)*span;
-        ctx.fillStyle=hexA(LANE_COL[l],0.42);
+        ctx.fillStyle=hexA(LN_COL,0.45);
         const y0=clamp(Math.min(hy,ty),-60,H+60), y1=clamp(Math.max(hy,ty),-60,H+60);
         ctx.fillRect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0));
-        ctx.fillStyle='rgba(255,255,255,.4)';
+        ctx.fillStyle='rgba(225,228,240,.45)';
         ctx.fillRect(x-2,y0,4,Math.max(4,y1-y0));
-        drawSprite(tailSprites[l],x,ty);
+        drawSprite(lnTailSprites[l],x,ty);
       }
       const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
       ctx.globalAlpha=clamp(a,0,1);
-      drawSprite(sprites[l],x,hy);
+      drawSprite(n.ln?lnSprites[l]:sprites[l],x,hy);
       ctx.globalAlpha=1;
     }
   }
