@@ -114,7 +114,7 @@ function parseOsu(text){
 /* ============ CANVAS / LAYOUT ============ */
 const cv=$('cv'), ctx=cv.getContext('2d',{alpha:true});
 let W=0,H=0,DPR=1, fieldX=0,fieldW=0,laneWpx=0,judgeY=0,topY=70,noteR=20;
-let sprites=[], tailSprites=[], lnSprites=[], lnTailSprites=[];
+let sprites=[], lnSprites=[];
 const LANE_COL=['#ffffff','#ffffff','#ffffff','#ffffff']; // mono white
 const LN_COL='#a9aebf'; // long-note gray
 function resize(){
@@ -146,8 +146,8 @@ function circleSprite(color,ring,mid,edge,stroke){
   }
   return {c, R};
 }
-function buildSprites(){ sprites=[]; tailSprites=[]; lnSprites=[]; lnTailSprites=[];
-  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); tailSprites.push(circleSprite('#ffffff',true)); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); lnTailSprites.push(circleSprite(LN_COL,true)); } }
+function buildSprites(){ sprites=[]; lnSprites=[];
+  for(let i=0;i<4;i++){ sprites.push(circleSprite('#ffffff',false,'#ffffff','#eef1fa','rgba(255,255,255,.95)')); lnSprites.push(circleSprite(LN_COL,false,'#c3c8d6','#6f7488','rgba(225,228,240,.9)')); } }
 window.addEventListener('resize',resize);
 
 /* ============ GAME FLOW ============ */
@@ -359,18 +359,18 @@ function draw(now){
   }
   ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fillRect(fieldX,0,1.5,H); ctx.fillRect(fieldX+fieldW-1.5,0,1.5,H);
   // ---- LN bodies + notes ----
-  const bodyW=Math.max(8,laneWpx*0.30);
+  const bodyW=noteR*2; // LN body = same thickness as note
   for(let l=0;l<4;l++){
     const x=fieldX+l*laneWpx+laneWpx/2, arr=lanes[l];
     // hold中
     const h=hold[l];
     if(h){
-      const ty=yFor(h.e);
+      const ty=yFor(h.e), top=Math.min(ty,judgeY), hh=Math.abs(judgeY-ty)+noteR*0.4;
       ctx.fillStyle=hexA(LN_COL,0.55);
-      ctx.fillRect(x-bodyW/2,Math.min(ty,judgeY),bodyW,Math.abs(judgeY-ty)+noteR*0.4);
-      ctx.fillStyle='rgba(225,228,240,.6)';
-      ctx.fillRect(x-2,Math.min(ty,judgeY),4,Math.abs(judgeY-ty)+noteR*0.4);
-      drawSprite(lnTailSprites[l],x,ty);
+      ctx.fillRect(x-bodyW/2,top,bodyW,hh);
+      ctx.beginPath(); ctx.arc(x,ty,bodyW/2,0,7); ctx.fill();
+      ctx.fillStyle='rgba(225,228,240,.35)';
+      ctx.fillRect(x-2,top,4,hh);
       // 保持エフェクト
       ctx.fillStyle=hexA(LN_COL,0.4);
       ctx.beginPath(); ctx.arc(x,judgeY,noteR*1.25,0,7); ctx.fill();
@@ -389,9 +389,9 @@ function draw(now){
         ctx.fillStyle=hexA(LN_COL,0.45);
         const y0=clamp(Math.min(hy,ty),-60,H+60), y1=clamp(Math.max(hy,ty),-60,H+60);
         ctx.fillRect(x-bodyW/2,y0,bodyW,Math.max(4,y1-y0));
-        ctx.fillStyle='rgba(225,228,240,.45)';
+        if(ty>-80&&ty<H+80){ ctx.beginPath(); ctx.arc(x,ty,bodyW/2,0,7); ctx.fill(); }
+        ctx.fillStyle='rgba(225,228,240,.28)';
         ctx.fillRect(x-2,y0,4,Math.max(4,y1-y0));
-        drawSprite(lnTailSprites[l],x,ty);
       }
       const a=dHead>approach*0.92?1-(dHead-approach*0.92)/(approach*0.08+250):1;
       ctx.globalAlpha=clamp(a,0,1);
