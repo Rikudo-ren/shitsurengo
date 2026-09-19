@@ -3,7 +3,7 @@
   --bg:#0a0e1a; --bg2:#11162a; --card:rgba(20,26,48,.72);
   --line:rgba(255,255,255,.09); --txt:#eef1ff; --dim:#9aa3c7;
   --acc:#00e5ff; --acc2:#7c5cff; --gold:#ffd54a;
-  --p:#00e5ff; --gr:#5dff8f; --go:#ffd54a; --me:#ff9a3d; --mi:#ff4d6d;
+  --pp:#ffffff; --p:#00e5ff; --gr:#5dff8f; --go:#ffd54a; --mi:#ff4d6d;
   --r:16px; --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -135,8 +135,9 @@ body.playing #bgBlur{display:none} /* プレイ中は全画面ぼかしレイヤ
 .rg{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:12px;padding:8px 4px}
 .rg span{display:block;font-size:10px;color:var(--dim);letter-spacing:.05em}
 .rg b{font-size:19px;font-variant-numeric:tabular-nums}
+.rg.perfectp b{color:var(--pp);text-shadow:0 0 10px rgba(255,255,255,.45)}
 .rg.perfect b{color:var(--p)} .rg.great b{color:var(--gr)} .rg.good b{color:var(--go)}
-.rg.meh b{color:var(--me)} .rg.miss b{color:var(--mi)} .rg.combo b{color:#fff}
+.rg.miss b{color:var(--mi)} .rg.combo b{color:#fff}
 .res-stats{font-size:11px;color:var(--dim);margin-bottom:12px}
 .res-btns{display:flex;gap:8px}.res-btns .btn{flex:1}
 /* settings */
@@ -160,6 +161,8 @@ body.playing #bgBlur{display:none} /* プレイ中は全画面ぼかしレイヤ
 .key-cap.listening{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc);animation:blink .6s infinite alternate}
 .judge-table{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
-.dot.perfect{background:var(--p)} .dot.great{background:var(--gr)} .dot.good{background:var(--go)} .dot.meh{background:var(--me)}
+.dot.perfectp{background:var(--pp);box-shadow:0 0 6px rgba(255,255,255,.55)}
+.dot.perfect{background:var(--p)} .dot.great{background:var(--gr)} .dot.good{background:var(--go)}
+.judge-table .dim{color:var(--dim);font-size:10px;margin-left:2px}
 .hidden{display:none!important}
 #toast{position:fixed;left:50%;bottom:calc(30px + var(--safe-b));transform:translateX(-50%);background:rgba(10,14,30,.92);border:1px solid var(--acc);color:var(--txt);padding:10px 18px;border-radius:99px;font-size:13px;z-index:99;box-shadow:0 8px 30px rgba(0,229,255,.3)}

@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" href="songs/失恋後/サムネイル.png">
 <link rel="apple-touch-icon" href="songs/失恋後/サムネイル.png">
 <title>失恋後 VSRG — 超軽量 音ゲー</title>
-<link rel="stylesheet" href="css/style.css?v=15">
+<link rel="stylesheet" href="css/style.css?v=16">
 </head>
 <body>
 <div id="bgBlur" aria-hidden="true"></div>
@@ -122,10 +122,10 @@
         <div id="resAcc" class="res-acc">100.00%</div>
         <div id="resNew" class="res-new hidden">✦ NEW BEST ✦</div>
         <div class="res-grid">
+          <div class="rg perfectp"><span>Perfect+</span><b id="cPp">0</b></div>
           <div class="rg perfect"><span>Perfect</span><b id="cP">0</b></div>
           <div class="rg great"><span>Great</span><b id="cGr">0</b></div>
           <div class="rg good"><span>Good</span><b id="cGo">0</b></div>
-          <div class="rg meh"><span>Meh</span><b id="cMe">0</b></div>
           <div class="rg miss"><span>Miss</span><b id="cMi">0</b></div>
           <div class="rg combo"><span>Max Combo</span><b id="cCb">0</b></div>
         </div>
@@ -170,14 +170,14 @@
           <div id="keyRow" class="key-row"></div>
           <div class="hint">DFJK 推奨 · モバイルはレーン直接タップ</div>
         </div>
-        <div class="set-group"><h3>判定（固定・osu!mania準拠）</h3>
+        <div class="set-group"><h3>判定（固定）</h3>
           <div class="judge-table">
-            <div><i class="dot perfect"></i>Perfect ±34ms</div>
-            <div><i class="dot great"></i>Great ±67ms</div>
-            <div><i class="dot good"></i>Good ±97ms</div>
-            <div><i class="dot meh"></i>Meh ±122ms</div>
+            <div><i class="dot perfectp"></i>Perfect+ ±34ms</div>
+            <div><i class="dot perfect"></i>Perfect ±67ms <span class="dim">+FAST/SLOW</span></div>
+            <div><i class="dot great"></i>Great ±97ms</div>
+            <div><i class="dot good"></i>Good ±122ms</div>
           </div>
-          <div class="hint">ACC = (P×300 + Gr×200 + Go×100 + Meh×50) ÷ (300×総数)</div>
+          <div class="hint">ACC = (P+×300 + P×300 + Gr×200 + Go×100) ÷ (300×総数) · PerfectでもACCは下がらない</div>
         </div>
         <button id="btnResetSettings" class="btn ghost full">設定をリセット</button>
       </div>
@@ -186,6 +186,6 @@
 
   <div id="toast" class="hidden"></div>
 </div>
-<script src="js/app.js?v=15"></script>
+<script src="js/app.js?v=16"></script>
 </body>
 </html>
