@@ -448,24 +448,32 @@ let songIdx=0;
 const escapeHtml=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function getBest(){ try{return JSON.parse(localStorage.getItem('vsrg_best_v1')||'{}');}catch(e){return {};} }
 function renderSongList(){
-  const list=$('songList'); list.innerHTML='';
-  const best=getBest();
+  const list=$('songList'), detail=$('songDetail'), best=getBest();
+  list.innerHTML='';
   SONGS.forEach((s,i)=>{
-    const b=document.createElement('button');
-    b.className='song-item'+(i===songIdx?' on':'');
+    const wrap=document.createElement('div');
+    wrap.className='song-item'+(i===songIdx?' on':'');
     const badges=s.diffs.map(d=>{
       const r=best[s.id+'|'+d.name];
       return `<span class="bd${r?' done':''}">${escapeHtml(d.level)}</span>`;
     }).join('');
-    b.innerHTML=`<img src="${s.thumb}" alt="" loading="lazy" draggable="false">`
+    const head=document.createElement('button');
+    head.className='song-head';
+    head.innerHTML=`<img src="${s.thumb}" alt="" loading="lazy" draggable="false">`
       +`<span class="si-meta"><span class="si-title">${escapeHtml(s.title)}</span>`
       +`<span class="si-artist">${escapeHtml(s.artist)}</span></span>`
       +`<span class="si-badges">${badges}</span>`;
-    b.onclick=()=>{ if(songIdx===i)return; songIdx=i; song=SONGS[i];
+    head.onclick=()=>{ if(songIdx===i)return; songIdx=i; song=SONGS[i];
       diffIdx=clamp(diffIdx,0,song.diffs.length-1);
       $('bgBlur').style.backgroundImage=`url("${song.thumb}")`;
       renderSongList(); renderDiffs(); refreshSongInfo(); };
-    list.appendChild(b);
+    wrap.appendChild(head);
+    if(i===songIdx){
+      const slot=document.createElement('div'); slot.className='detail-slot';
+      slot.appendChild(detail); wrap.appendChild(slot);
+      detail.classList.remove('pop'); void detail.offsetWidth; detail.classList.add('pop');
+    }
+    list.appendChild(wrap);
   });
 }
 function renderDiffs(){
