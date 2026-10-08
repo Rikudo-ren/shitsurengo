@@ -126,6 +126,7 @@
           <div class="rg perfect"><span>Perfect</span><b id="cP">0</b></div>
           <div class="rg great"><span>Great</span><b id="cGr">0</b></div>
           <div class="rg good"><span>Good</span><b id="cGo">0</b></div>
+          <div class="rg meh"><span>Meh</span><b id="cMe">0</b></div>
           <div class="rg miss"><span>Miss</span><b id="cMi">0</b></div>
           <div class="rg combo"><span>Max Combo</span><b id="cCb">0</b></div>
         </div>
@@ -176,8 +177,9 @@
             <div><i class="dot perfect"></i>Perfect ±67ms <span class="dim">+FAST/SLOW</span></div>
             <div><i class="dot great"></i>Great ±97ms</div>
             <div><i class="dot good"></i>Good ±122ms</div>
+            <div><i class="dot meh"></i>Meh(50) ±151ms</div>
           </div>
-          <div class="hint">ACC = (P+×300 + P×300 + Gr×200 + Go×100) ÷ (300×総数) · PerfectでもACCは下がらない</div>
+          <div class="hint">ACC = (P+×300 + P×300 + Gr×200 + Go×100 + Meh×50) ÷ (300×総数) · PerfectでもACCは下がらない（osu!mania stable ScoreV1 準拠）<br>SCORE = Base + Bonus の2本立て（上限100万）· all-P+ で 1,000,000 / all-P で 968,750</div>
         </div>
         <button id="btnResetSettings" class="btn ghost full">設定をリセット</button>
       </div>
@@ -186,6 +188,6 @@
 
   <div id="toast" class="hidden"></div>
 </div>
-<script src="js/app.js?v=16"></script>
+<script src="js/app.js?v=18"></script>
 </body>
 </html>

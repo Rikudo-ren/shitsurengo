@@ -14,19 +14,46 @@ python3 -m http.server 8901
 ```
 
 - PC: `D F J K`（設定で変更可）/ モバイル: レーンを直接タップ（マルチタッチ対応）
-- 長押しノーツ(LN): 終端までホールド。途中で離すと Miss
+- 長押しノーツ(LN): 終端までホールド。±151ms を超えて早く離すと Miss
 
 ## 仕様
 
 | 項目 | 内容 |
 |---|---|
-| 判定 | Perfect+ ±34ms / Perfect ±67ms（FAST/SLOW表示） / Great ±97ms / Good ±122ms / Miss |
-| ACC | `(P+×300 + P×300 + Gr×200 + Go×100) ÷ (300×総判定数)` — Perfect も 300 なので ACC は下がらない |
-| SCORE | 最大 100万 `⌊1000000 × 重み合計 ÷ (300×総判定数)⌋` |
-| GRADE | SS=100% / S>95 / A>90 / B>80 / C>70 / D |
+| 判定 | Perfect+ ±34ms / Perfect ±67ms（FAST/SLOW表示） / Great ±97ms / Good ±122ms / Meh(50) ±151ms / Miss |
+| ACC | osu!mania stable (ScoreV1) 準拠 — `(300×(P+ + P) + 200×Gr + 100×Go + 50×Meh) ÷ (300×総判定数)`。P+ は MAX (rainbow 300) として 300 扱い → ACC は下がらない |
+| SCORE | osu!mania stable (ScoreV1) 準拠 — Base + Bonus の2本立て（上限 100万）。all-P+ で 1,000,000、all-P（ACC 100%）で 968,750。詳細は下記 |
+| GRADE | SS=100% / S>95 / A>90 / B>80 / C>70 / D（osu!mania stable と同じく ACC 基準） |
 | 速度 | 0.5x–3.0x（0.1刻み、音源も一緒に変速）。スクロール速度は不変で、ノーツの**密度**だけが変わる |
 | 画面 | 上部はノーツ用に完全開放（HUD/進行バーは画面下に配置） |
 | LN | 始端+終端の2判定。終端まで保持で Perfect+扱い |
+
+### ACC / SCORE の計算式（osu!mania stable・ScoreV1 準拠）
+
+判定は osu!mania stable の判定に対応させる:
+**Perfect+ = MAX (rainbow 300) / Perfect = 300 / Great = 200 / Good = 100 / Meh = 50 / Miss = Miss**
+
+- **ACC**: `(300×(MAX + 300) + 200×200 + 100×100 + 50×50) ÷ (300 × 総判定数)`
+  MAX も 300 扱いなので、Perfect+ でも ACC は下がらない。
+- **SCORE**: Base + Bonus の2本立て（各上限 500,000、合計 1,000,000）。1判定あたり
+  `Base = (500000 ÷ 総判定数) × (HitValue ÷ 320)`
+  `Bonus = (500000 ÷ 総判定数) × (HitBonusValue × √Bonus ÷ 320)`
+  を加算する。
+
+  | 判定 | HitValue | HitBonusValue | HitBonus | HitPunishment |
+  |---|---|---|---|---|
+  | P+ (MAX) | 320 | 32 | +2 | 0 |
+  | P (300) | 300 | 32 | +1 | 0 |
+  | Gr (200) | 200 | 16 | 0 | 8 |
+  | Go (100) | 100 | 8 | 0 | 24 |
+  | Meh (50) | 50 | 4 | 0 | 44 |
+  | Miss | 0 | 0 | 0 | ∞（Bonus ごと 0） |
+
+  Bonus は [0,100] の浮動値（開始値 100）。ヒットごとに `Bonus += HitBonus − HitPunishment` で更新し（クランプ [0,100]）、そのヒットの BonusScore は**更新前の Bonus** で評価する。Meh 窓は ±122〜151ms（外端 151ms は stable の 50 窓の基準値 = OD0 と同じ）。
+
+  これにより SCORE は ACC とは別物になる: all-P+（all-MAX）で 1,000,000、all-P（gold 300 のみ）で ACC 100% のまま 968,750。旧実装は `SCORE = ACC × 10000` だった。
+
+  なお LN は本作の仕様どおり始端+終端の2判定（osu!mania stable は LN=1判定）で、上記の式は判定ごとに適用する。
 
 ## 曲の追加方法（後々増やす用）
 
