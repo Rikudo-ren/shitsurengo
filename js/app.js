@@ -16,7 +16,8 @@ function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.se
 /* ============ JUDGE WINDOWS (fixed) ============
  * 窓幅は従来どおり。表示名だけ押し上げ:
  *   ±34 Perfect+ / ±67 Perfect / ±97 Great / ±122 Good / Miss
- * Perfect(旧Great窓)も ACC・SCORE は 300 扱い → 精度が以前より出しやすい */
+ * Perfect(旧Great窓)も ACC は 300 扱い（osu!mania stable ScoreV1 と同じ）→ 精度が以前より出しやすい。
+ * SCORE は ACC とは別の計算（下記の ScoreV1 Base+Bonus） */
 const W_P=34, W_GR=67, W_GO=97, W_GD=122;
 const JC=['#ffffff','#00e5ff','#5dff8f','#ffd54a','#ff4d6d'];
 const JN=['PERFECT+','PERFECT','GREAT','GOOD','MISS'];
@@ -26,6 +27,7 @@ let SONGS=[], song=null, diffIdx=S.lastDiff|0;
 let chartCache={}, audioCache={};
 let chart=null, lanes=[[],[],[],[]], ptr=[0,0,0,0];
 let totalJud=0, judged=0, counts={pp:0,p:0,gr:0,go:0,mi:0}, combo=0, maxCombo=0;
+let bonusVal=100, scoreBase=0, scoreBonus=0;   // osu!mania stable (ScoreV1) の Bonus と Base/Bonus 累積
 let state='select', rate=1, approach=750, approachC=750, lastT=0;
 let songMs=-99999, startCtx=0, leadSec=2;
 let hold=[null,null,null,null], laneCnt=[0,0,0,0], laneLit=[0,0,0,0];
@@ -287,14 +289,49 @@ function buildLanes(){
   let ln=0; for(const n of chart.notes)if(n.ln)ln++;
   totalJud=chart.notes.length+ln;
   judged=0; counts={pp:0,p:0,gr:0,go:0,mi:0}; combo=0; maxCombo=0;
+  bonusVal=100; scoreBase=0; scoreBonus=0;
   lastT=chart.notes.length?chart.notes[chart.notes.length-1].t:0;
   const e=chart.notes.reduce((m,n)=>Math.max(m,n.ln?n.e:n.t),0); lastT=Math.max(lastT,e);
   tpIdx=0; judgePop.t=-1; hitErrs=[]; errSum=0; errN=0;
 }
-// Perfect+ と Perfect はどちらも 300。Great=200 / Good=100（旧 Good/Meh 窓を一段繰り上げ）
-const scoreNow=()=> totalJud?Math.floor(1000000*(counts.pp*300+counts.p*300+counts.gr*200+counts.go*100)/(300*totalJud)):0;
-const accNow=()=>{ const w=counts.pp*300+counts.p*300+counts.gr*200+counts.go*100;
+/* ============ SCORING — osu!mania stable (ScoreV1) 準拠 ============
+ * 判定を osu!mania stable の判定に対応付ける（このゲームには 50/MEH 判定は無い）:
+ *   PERFECT+ → MAX (rainbow 300) / PERFECT → 300 / GREAT → 200 / GOOD → 100 / MISS → Miss
+ *
+ * ACC (ScoreV1):  (300×(MAX+300) + 200×200 + 100×100 + 50×50) ÷ (300 × 総判定数)
+ *   MAX も 300 扱い → Perfect+ でも ACC は下がらない（従来どおり）
+ *
+ * SCORE (ScoreV1): Base + Bonus の2本立て（各上限 500,000、合計 1,000,000 上限）:
+ *   1判定あたり  BaseScore  = (500000 ÷ 総判定数) × (HitValue ÷ 320)
+ *               BonusScore = (500000 ÷ 総判定数) × (HitBonusValue × √Bonus ÷ 320)
+ *   Bonus は [0,100] の浮動値（開始値 100）。ヒット毎に Bonus を更新し（更新前の Bonus でそのヒットの BonusScore を評価）:
+ *   Bonus += HitBonus − HitPunishment（クランプ [0,100]、Miss は 0 にリセット）
+ *   HitValue      : MAX=320, 300=300, 200=200, 100=100, 50=50, Miss=0
+ *   HitBonusValue : MAX=32, 300=32, 200=16, 100=8, 50=4, Miss=0
+ *   HitBonus      : MAX=+2, 300=+1, それ以下=0
+ *   HitPunishment : 200=8, 100=24, 50=44, Miss=∞（Bonus ごと 0）
+ * → ACC とは別物になる（all-P で ACC 100% でも SCORE は 968,750、all-P+ で 1,000,000）。
+ *   旧実装は SCORE = ACC × 10000（重みの単純和）だった */
+const ACC_W   =[300,300,200,100,0];   // ACC 重み (ScoreV1: MAX も 300)
+const HIT_V   =[320,300,200,100,0];   // HitValue      (P+ = MAX = 320)
+const HIT_BV  =[32,32,16,8,0];        // HitBonusValue
+const HIT_BON =[2,1,0,0,0];           // HitBonus
+const HIT_PUN =[0,0,8,24,Infinity];   // HitPunishment (Miss は Bonus ごと 0)
+function addJudge(j){   // 判定を1つ登録（counts/combo/judged と ScoreV1 の SCORE をまとめて更新）
+  if(j===0)counts.pp++; else if(j===1)counts.p++; else if(j===2)counts.gr++;
+  else if(j===3)counts.go++; else counts.mi++;
+  judged++;
+  if(j===4){ combo=0; } else { combo++; if(combo>maxCombo)maxCombo=combo; }
+  if(totalJud){   // osu!mania stable (ScoreV1): Base + Bonus
+    const per=500000/totalJud;
+    scoreBase+=per*(HIT_V[j]/320);
+    scoreBonus+=per*(HIT_BV[j]*Math.sqrt(bonusVal)/320);   // 更新前の Bonus で評価
+  }
+  bonusVal = j===4 ? 0 : clamp(bonusVal+HIT_BON[j]-HIT_PUN[j],0,100);
+}
+const accNow=()=>{ const w=counts.pp*ACC_W[0]+counts.p*ACC_W[1]+counts.gr*ACC_W[2]+counts.go*ACC_W[3]+counts.mi*ACC_W[4];
   return judged?w/(300*judged)*100:100; };
+const scoreNow=()=> totalJud?Math.min(1000000,Math.round(scoreBase+scoreBonus)):0;
 function gradeFor(a){ if(a>=100-1e-9)return 'SS'; if(a>95)return 'S'; if(a>90)return 'A'; if(a>80)return 'B'; if(a>70)return 'C'; return 'D'; }
 
 function applyScroll(){
@@ -357,10 +394,7 @@ function quitToSelect(){ stopAudio(); state='select'; paused=false; $('pauseMenu
 function laneFromX(x){ const l=Math.floor((x-fieldX)/laneWpx); return clamp(l,0,3); }
 function judgeOf(adt){ return adt<=W_P?0:adt<=W_GR?1:adt<=W_GO?2:adt<=W_GD?3:4; }
 function applyHit(j,dt){
-  if(j===0)counts.pp++; else if(j===1)counts.p++; else if(j===2)counts.gr++;
-  else if(j===3)counts.go++; else counts.mi++;
-  judged++;
-  if(j===4){ combo=0; } else { combo++; if(combo>maxCombo)maxCombo=combo; }
+  addJudge(j);   // counts/combo/judged と osu!mania stable (ScoreV1) の SCORE を更新
   const now=performance.now();
   // ±8ms 超で FAST/SLOW を併記 → Perfect(±34〜67ms) 帯は必ず打ち分けが出る。Perfect+ はほぼ中央のみ無印
   judgePop={t:now,j,early:dt<-8?'FAST':dt>8?'SLOW':''};
@@ -392,7 +426,7 @@ function press(lane,t){
   const dt=inputMs-cand.t, j=judgeOf(Math.abs(dt));
   cand.hs=1; applyHit(j,dt);
   if(cand.ln&&j!==4)hold[lane]=cand;
-  else if(cand.ln&&j===4){ cand.ts=2; counts.mi++; judged++; combo=0; }
+  else if(cand.ln&&j===4){ cand.ts=2; addJudge(4); }   // LN始端Miss → 終端もMiss（Bonus は 0 にリセット）
   while(ptr[lane]<arr.length&&arr[ptr[lane]].hs!==0)ptr[lane]++;
   immediateDraw();
 }
@@ -402,7 +436,7 @@ function release(lane,t){
   if(state!=='playing'||paused){ if(state==='playing') immediateDraw(); return; }
   const n=hold[lane]; if(!n){ immediateDraw(); return; }
   const dt=songMsAt(t)-n.e;
-  if(dt<-W_GD){ n.ts=2; counts.mi++; judged++; combo=0;
+  if(dt<-W_GD){ n.ts=2; addJudge(4);
     judgePop={t:performance.now(),j:4,early:'EARLY RELEASE'}; }
   else { const j=judgeOf(Math.abs(dt)); n.ts=1; applyHit(j,dt); }
   hold[lane]=null;
@@ -470,14 +504,14 @@ function loop(now){
       if(n.hs!==0){ptr[l]++;continue;}
       if(songMs-n.t>W_GD){
         n.hs=2; applyHit(4,0);
-        if(n.ln){ n.ts=2; counts.mi++; judged++; combo=0; }
+        if(n.ln){ n.ts=2; addJudge(4); }   // LN は始端Missで終端もMiss
         ptr[l]++;
       } else break;
     }
   }
   for(let l=0;l<4;l++){ const n=hold[l];
-    // LN終端まで保持 → Perfect+（満点）
-    if(n&&songMs>=n.e){ n.ts=1; counts.pp++; judged++; combo++; if(combo>maxCombo)maxCombo=combo; hold[l]=null; } }
+    // LN終端まで保持 → Perfect+（満点。stable でもホールドを最後まで繋げば PERFECT=MAX=320）
+    if(n&&songMs>=n.e){ n.ts=1; addJudge(0); hold[l]=null; } }
   for(let l=0;l<4;l++)laneLit[l]=Math.max(0,laneLit[l]-dt*5);
   if(chart&&chart.tps.length){ while(tpIdx<chart.tps.length-1&&chart.tps[tpIdx+1].t<=songMs)tpIdx++;
     while(tpIdx>0&&chart.tps[tpIdx].t>songMs)tpIdx--; }
