@@ -40,7 +40,7 @@ test('draw() runs on a fake canvas without per-frame text/shadow/gradient work',
     chart={tps:[{t:0,b:500}],notes:[]}; resize();`);
   assert.equal(run('DPR'),2,'auto は DPR 上限 2');
   assert.ok(spriteLog.includes('shadowBlur')&&spriteLog.includes('fillText'),'文字は起動時にスプライト化される');
-  assert.equal(run('txt.judge.length'),5); assert.equal(run('txt.digit.length'),10);
+  assert.equal(run('txt.judge.length'),6); assert.equal(run('txt.digit.length'),10);
   // ノーツ / LN / ホールド中 / 判定表示 / コンボ / エラーバー を全部含む状態で数フレーム描く
   run(`lanes=[[{t:5200,e:0,ln:false,hs:0,ts:1},{t:5600,e:6400,ln:true,hs:0,ts:0}],[{t:5300,e:0,ln:false,hs:0,ts:1}],[],[{t:4900,e:5900,ln:true,hs:1,ts:0}]];
     ptr=[0,0,0,0]; hold=[null,null,null,lanes[3][0]]; laneCnt=[1,0,0,1]; laneLit=[1,0.5,0,0];
