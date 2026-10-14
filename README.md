@@ -55,6 +55,17 @@ python3 -m http.server 8901
 
   なお LN は本作の仕様どおり始端+終端の2判定（osu!mania stable は LN=1判定）で、上記の式は判定ごとに適用する。
 
+## osu! で遊ぶ (.osz)
+
+選曲画面の「⬇ osu! 譜面 (.osz) をダウンロード」から、またはリポジトリ直下の
+[`shitsurengo.osz`](shitsurengo.osz) を直接ダウンロードできます。
+osu! / osu!lazer にドロップ（またはダブルクリック）するとインポートされます。
+
+- osu!mania 4K / Easy (643 notes) · Normal (1683 notes) · Hard (1886 notes)
+- 中身: `.osu` ×3 + `失恋後.mp3` + 背景 `サムネイル.png`（フラット構成、フォルダなし）
+- 譜面を編集したら `python3 tools/build_osz.py` で .osz を作り直し、一緒にコミットしてください
+  （メタデータ・背景・参照先の検証も同スクリプトが行います）
+
 ## 曲の追加方法（後々増やす用）
 
 1. `songs/曲名/` フォルダを作り、`.mp3` / サムネイル / `.osu` を入れる
