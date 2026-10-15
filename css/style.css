@@ -85,6 +85,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 .start-btn:disabled{opacity:.5;filter:grayscale(.4)}
 .osz-btn{display:block;text-align:center;text-decoration:none;border:1px solid var(--line);border-radius:18px;padding:13px;font-size:14px;font-weight:800;letter-spacing:.06em;color:var(--txt);background:rgba(255,255,255,.06);transition:.15s}
 .osz-btn:active{transform:scale(.97)}
+.osz-btn.alt{margin-top:10px;border-color:rgba(255,213,74,.35);background:rgba(255,213,74,.08);color:var(--gold)}
 .keys-hint{text-align:center;font-size:11px;color:var(--dim)}
 .keys-hint span{color:var(--txt);font-weight:700;letter-spacing:.2em}
 .load-status{text-align:center;font-size:12px;color:var(--gold);min-height:16px}
