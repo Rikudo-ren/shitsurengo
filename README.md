@@ -60,11 +60,17 @@ python3 -m http.server 8901
 選曲画面の「⬇ osu! 譜面 (.osz) をダウンロード」から、またはリポジトリ直下の
 [`shitsurengo.osz`](shitsurengo.osz) を直接ダウンロードできます。
 osu! / osu!lazer にドロップ（またはダブルクリック）するとインポートされます。
+**1倍速の全譜面と2倍速の全譜面を1つの .osz に同梱**しているので、これ1つで全部遊べます。
 
-- osu!mania 4K / Easy (643 notes) · Normal (1683 notes) · Hard (1886 notes)
-- 中身: `.osu` ×3 + `失恋後.mp3` + 背景 `サムネイル.png`（フラット構成、フォルダなし）
+- osu!mania 4K / 6譜面: Easy (643 notes) · Normal (1683 notes) · Hard (1886 notes) +
+  それぞれの 2倍速版（`Easy (2x)` / `Normal (2x)` / `Hard (2x)`。同じ譜面を2倍速にしたもの）
+- 中身（フラット構成、フォルダなし）:
+  - `.osu` ×6 — Easy / Normal / Hard / Easy (2x) / Normal (2x) / Hard (2x)
+  - `失恋後.mp3`（1倍速譜面が参照）/ `失恋後 (2x).mp3`（2倍速譜面が参照 = Web の 2.0x と同じ音）
+  - 背景 `サムネイル.png`（全譜面で共有）
+- 譜面の `Creator:` は `mamekina`（osu! の曲画面に出る "beatmap by 〜" の表記）
 - 譜面を編集したら `python3 tools/build_osz.py` で .osz を作り直し、一緒にコミットしてください
-  （メタデータ・背景・参照先の検証も同スクリプトが行います）
+  （メタデータ・背景・参照先・1x/2x の対応の検証も同スクリプトが行います）
 
 ## 曲の追加方法（後々増やす用）
 
@@ -122,4 +128,4 @@ FASTが多ければ +、SLOWが多ければ − に調整してください。
 調整していた場合は再調整してください）。判定幅の仕様は変更していません。
 
 回帰テスト: `node --test tests/*.cjs`（倍率×オフセット / 時計の平滑化・遅延補正・入力時刻 / 描画経路）·
-`python3 -m unittest tests/test_osz_transform.py`（2倍速 .osz の譜面変換）
+`python3 -m unittest tests/test_osz_transform.py`（2倍速の譜面変換 / 1つの .osz に全譜面が入っているか）
