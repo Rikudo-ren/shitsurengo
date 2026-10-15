@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
-"""Build `shitsurengo.osz` / `shitsurengo_2x.osz` (osu! beatmapset archives).
+"""Build `shitsurengo.osz` — one osu! beatmapset archive holding every chart.
 
-An .osz is just a zip. Archives are built flat (no enclosing folder) so that
-osu! stable / osu!lazer can import them by double-click or drag & drop:
+An .osz is just a zip. The archive is built flat (no enclosing folder) so that
+osu! stable / osu!lazer can import it by double-click or drag & drop. A single
+import gives you the three 1x charts **and** their 2x sped-up counterparts:
 
-    櫻優 - 失恋後 (Rikudo-ren) [Easy].osu
-    櫻優 - 失恋後 (Rikudo-ren) [Normal].osu
-    櫻優 - 失恋後 (Rikudo-ren) [Hard].osu
-    失恋後.mp3            <- referenced by AudioFilename: in every .osu
-    サムネイル.png        <- referenced by the background event in every .osu
-
-The 2x archive additionally contains sped-up versions of everything:
-
-    櫻優 - 失恋後 (Rikudo-ren) [Easy (2x)].osu   (all times halved)
-    ... / [Normal (2x)] / [Hard (2x)]
-    失恋後 (2x).mp3       <- audio decimated to 2x (speed + pitch, = Web版 2.0x)
-    サムネイル.png
+    櫻優 - 失恋後 (mamekina) [Easy].osu            <- 1x 譜面 (音源: 失恋後.mp3)
+    櫻優 - 失恋後 (mamekina) [Normal].osu
+    櫻優 - 失恋後 (mamekina) [Hard].osu
+    櫻優 - 失恋後 (mamekina) [Easy (2x)].osu       <- 2x 譜面 (全時間を半分に)
+    櫻優 - 失恋後 (mamekina) [Normal (2x)].osu
+    櫻優 - 失恋後 (mamekina) [Hard (2x)].osu
+    失恋後.mp3             <- 1x 譜面の AudioFilename
+    失恋後 (2x).mp3        <- 2x 譜面の AudioFilename (= Web版 2.0x と同じ音)
+    サムネイル.png         <- 全譜面の背景 (Events)
 
 The .osu files in `songs/失恋後/` are packaged verbatim (they are shared with
-the web game); the 2x charts are derived from them by halving every time
-value (notes, LN ends, timing points, preview time, bookmarks). The 2x audio
-is derived by keeping every 2nd PCM frame — exactly what the web game's
-`playbackRate = 2` sounds like.
-Re-run this script after editing a chart, then commit the new .osz files.
+the web game); the 2x charts are derived from them by halving every time value
+(notes, LN ends, timing points, preview time, bookmarks). The 2x audio is
+derived by keeping every 2nd PCM frame — exactly what the web game's
+`playbackRate = 2` sounds like. `[Metadata] Creator:` (osu! では "beatmap by 〜"
+として表示される) は各 .osu の値をそのまま使います。
+Re-run this script after editing a chart, then commit the new .osz file.
 
-Usage:  python3 tools/build_osz.py [--output path/to/file.osz]
-                                   [--output-2x path/to/file_2x.osz]
-                                   [--keep-audio]
+Usage:  python3 tools/build_osz.py [--output path/to/file.osz] [--keep-audio]
 
 The 2x audio needs `pip install soundfile numpy lameenc` when (re)generating.
 If that is not installed, the script reuses the committed
@@ -55,8 +52,8 @@ DIFFS = [
 AUDIO = "失恋後.mp3"            # must match AudioFilename: in the .osu files
 BACKGROUND = "サムネイル.png"   # must match the [Events] background event
 
-AUDIO_2X = "失恋後 (2x).mp3"    # AudioFilename inside the 2x .osz (and cache name)
-SUFFIX_2X = "(2x)"              # appended to each difficulty Version:
+AUDIO_2X = "失恋後 (2x).mp3"    # AudioFilename inside the 2x charts (and cache name)
+SUFFIX_2X = "(2x)"              # appended to each 2x difficulty Version:
 
 # valid MPEG-1 Layer III bitrates (kbps) — snap the detected source rate to one of these
 MP3_BITRATES = (32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
@@ -238,20 +235,26 @@ def write_zip(out_path: pathlib.Path, entries: list[tuple[str, bytes]]) -> None:
 
 
 def reread_validate(out_path: pathlib.Path, entries: list[tuple[str, bytes]],
-                    expected_versions: set[str], audio: str) -> set[str]:
-    """Read the archive back, re-check every chart, return the file names."""
+                    expected: dict[str, str]) -> list[str]:
+    """Read the archive back, re-check every chart, return the file names.
+
+    `expected` maps every difficulty Version: -> the AudioFilename it must
+    reference (1x 譜面は AUDIO、2x 譜面は AUDIO_2X).
+    """
     with zipfile.ZipFile(out_path) as zf:
         bad = zf.testzip()
         assert bad is None, f"zip が壊れています: {bad}"
         names = zf.namelist()
-        assert len(names) == len(entries) == len(DIFFS) + 2, names
+        assert len(names) == len(entries), names
         versions = set()
         for name in names:
             if name.endswith(".osu"):
                 info = parse_osu(zf.read(name).decode("utf-8"))
-                versions.add(info["meta"]["Version"])
-                check(info, info["meta"]["Version"], set(names), audio)
-        assert versions == expected_versions, versions
+                version = info["meta"]["Version"]
+                versions.add(version)
+                assert version in expected, f"想定外の難易度名です: {version!r}"
+                check(info, version, set(names), expected[version])
+        assert versions == set(expected), versions
     return names
 
 
@@ -291,28 +294,18 @@ def summary_line(version: str, info: dict, arcname: str) -> str:
             f"~{mm}:{ss:02d}  {arcname}")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--output", type=pathlib.Path,
-                    default=ROOT / "shitsurengo.osz",
-                    help="出力先 .osz (既定: リポジトリ直下の shitsurengo.osz)")
-    ap.add_argument("--output-2x", type=pathlib.Path, default=None,
-                    help="2倍速版の出力先 (既定: <output> の隣の *_2x.osz)")
-    ap.add_argument("--keep-audio", action="store_true",
-                    help="2倍速音源を再生成せず既存のものを使う")
-    args = ap.parse_args()
-    out2x_path = args.output_2x or args.output.with_name(args.output.stem + "_2x.osz")
-
+def build(output: pathlib.Path, keep_audio: bool = False) -> dict:
+    """Write every chart (1x + 2x) into one .osz and verify it by re-reading."""
     for name in (AUDIO, BACKGROUND, *(src for src, _ in DIFFS)):
         if not (SONG_DIR / name).is_file():
             raise SystemExit(f"必要なファイルがありません: {SONG_DIR / name}")
 
-    # ---- 元譜面を読んで検証しつつ、通常版と 2x 版の両方のエントリを作る ----
+    # ---- 元譜面を読んで検証しつつ、1x / 2x の両方のエントリを作る ----
     entries: list[tuple[str, bytes]] = []
-    entries_2x: list[tuple[str, bytes]] = []
+    expected: dict[str, str] = {}   # Version -> 参照する音源
     originals: list[dict] = []      # parsed originals, same order as DIFFS
     summaries: list[str] = []
-    summaries_2x: list[str] = []
+    chart_files: list[str] = []
     artist = title = None
 
     for src, version in DIFFS:
@@ -327,8 +320,10 @@ def main() -> int:
         arcname = chart_arcname(meta, version)
         entries.append((arcname, text.encode("utf-8")))
         summaries.append(summary_line(version, info, arcname))
+        chart_files.append(arcname)
+        expected[version] = AUDIO
 
-        # 2x 版: 全時間を半分にした譜面
+        # 2x 版: 全時間を半分にした譜面（同じ .osz に同居させる）
         version_2x = f"{version} {SUFFIX_2X}"
         text_2x = to_2x_osu(text, version_2x)
         info_2x = parse_osu(text_2x)
@@ -342,15 +337,15 @@ def main() -> int:
                 or info_2x["ln_ends"] != [h2(t) for t in info["ln_ends"]]):
             raise SystemExit(f"[{version_2x}] ノーツ時間が元の半分になっていません")
         arcname_2x = chart_arcname(meta, version_2x)
-        entries_2x.append((arcname_2x, text_2x.encode("utf-8")))
-        summaries_2x.append(summary_line(version_2x, info_2x, arcname_2x))
+        entries.append((arcname_2x, text_2x.encode("utf-8")))
+        summaries.append(summary_line(version_2x, info_2x, arcname_2x))
+        chart_files.append(arcname_2x)
+        expected[version_2x] = AUDIO_2X
 
-    entries.append((AUDIO, (SONG_DIR / AUDIO).read_bytes()))
-    entries.append((BACKGROUND, (SONG_DIR / BACKGROUND).read_bytes()))
-
-    # ---- 2x 音源（キャッシュがあれば再生成を省略できる）----
+    # ---- 音源（1x / 2x）と背景を同梱する ----
+    # 2x 音源はキャッシュがあれば再生成を省略できる
     audio_2x_path = SONG_DIR / AUDIO_2X
-    if args.keep_audio or not _audio_needs_build(audio_2x_path):
+    if keep_audio or not _audio_needs_build(audio_2x_path):
         if not audio_2x_path.is_file():
             raise SystemExit(
                 f"2倍速音源がありません: {audio_2x_path}\n"
@@ -359,30 +354,34 @@ def main() -> int:
         print(f"  2x audio: 既存の {AUDIO_2X} を使用")
     else:
         make_2x_audio(SONG_DIR / AUDIO, audio_2x_path)
-    entries_2x.append((AUDIO_2X, audio_2x_path.read_bytes()))
-    entries_2x.append((BACKGROUND, (SONG_DIR / BACKGROUND).read_bytes()))
+    entries.append((AUDIO, (SONG_DIR / AUDIO).read_bytes()))
+    entries.append((AUDIO_2X, audio_2x_path.read_bytes()))
+    entries.append((BACKGROUND, (SONG_DIR / BACKGROUND).read_bytes()))
 
     # ---- 書き出し + 読み戻し検証 ----
-    write_zip(args.output, entries)
-    reread_validate(args.output, entries,
-                    {v for _, v in DIFFS}, AUDIO)
+    write_zip(output, entries)
+    reread_validate(output, entries, expected)
 
-    write_zip(out2x_path, entries_2x)
-    reread_validate(out2x_path, entries_2x,
-                    {f"{v} {SUFFIX_2X}" for _, v in DIFFS}, AUDIO_2X)
-
-    size_mb = args.output.stat().st_size / 1_000_000
-    size_2x_mb = out2x_path.stat().st_size / 1_000_000
-    print(f"{title} / {artist} — {len(DIFFS)}譜面入りの .osz を2種類作成しました")
-    print("— 通常版: " + str(args.output.name))
+    size_mb = output.stat().st_size / 1_000_000
+    print(f"{title} / {artist} — 1倍速{len(DIFFS)}譜面 + 2倍速{len(DIFFS)}譜面"
+          f"の .osz を作成しました")
     print("\n".join(summaries))
-    print(f"  + audio: {AUDIO} / background: {BACKGROUND}")
-    print(f"-> {args.output} ({size_mb:.2f} MB, {len(entries)} files)")
-    print("— 2倍速版: " + str(out2x_path.name))
-    print("\n".join(summaries_2x))
-    print(f"  + audio: {AUDIO_2X} / background: {BACKGROUND}")
-    print(f"-> {out2x_path} ({size_2x_mb:.2f} MB, {len(entries_2x)} files)")
+    print(f"  + audio: {AUDIO} / {AUDIO_2X} / background: {BACKGROUND}")
+    print(f"-> {output} ({size_mb:.2f} MB, {len(entries)} files)")
     print("osu! / osu!lazer にドロップするか、ダブルクリックでインポートできます。")
+    return {"entries": entries, "chart_files": chart_files, "summary": summaries,
+            "versions": expected, "size": output.stat().st_size}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--output", type=pathlib.Path,
+                    default=ROOT / "shitsurengo.osz",
+                    help="出力先 .osz (既定: リポジトリ直下の shitsurengo.osz)")
+    ap.add_argument("--keep-audio", action="store_true",
+                    help="2倍速音源を再生成せず既存のものを使う")
+    args = ap.parse_args()
+    build(args.output, keep_audio=args.keep_audio)
     return 0
 
 
