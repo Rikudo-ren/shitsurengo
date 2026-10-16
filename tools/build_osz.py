@@ -83,10 +83,13 @@ MP3_BITRATES = (32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
 # 打鍵音の統一先（tools/normalize_osu.py と揃える）: soft / 音量 50
 SAMPLE = '2:2:0:50:'
 
-# 2倍速譜面の見た目のスクロール速度を 1倍速と揃えるための SV。
-# BPM は2倍（beatLength 半分）で表示を実際の速さに合わせ、SV 0.5 で
-# 1秒あたりの移動量を 1倍速と同じにする。
-SV_2X = 0.5
+# 2倍速譜面のスクロール速度。
+# 以前は BPM 2倍 + SV 0.5 で「BPM×SV」を 1倍速と同じにしていたが、
+# osu!mania の Fixed スクロールは BPM に依らず SV のみに依存するため、
+# Fixed 使用時にスクロールが 1/2 になってしまう。
+# 2倍速は「BPM 表示は実際の速さ(2倍)」「スクロールは 1倍速と同じ(Fixed)」
+# を優先し、SV=1.0 に修正する（BPM scale 使用時は 2倍速になる）。
+SV_2X = 1.0
 
 
 def _sv_line_value() -> str:
@@ -286,12 +289,15 @@ def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
                 parts[0] = str(h2(float(parts[0])))
                 if float(parts[1]) > 0:
                     # BPM 行。時間だけでなく beatLength も半分にして BPM 表示を
-                    # 実際の速さ（2倍）に合わせ、直後に SV 0.5 の緑線を置く。
-                    # これで見た目のスクロール速度は 1倍速と揃い、ノーツだけが
-                    # 2倍の密度で降ってくる（SV を入れないと表示も流れる速さも2倍）。
+                    # 実際の速さ（2倍）に合わせる。
+                    # 以前は直後に SV 0.5 の緑線を置いて BPM×SV を 1倍速と同じに
+                    # していたが、Fixed スクロールでは SV のみが効くため 1/2 になる
+                    # 不具合があった。現在は SV=1.0 でスクロールを 1倍速と同じに
+                    # する（BPM scale では 2倍速になる）。
                     parts[1] = repr(float(parts[1]) / 2)
                     out.append(','.join(parts))
-                    # 継承（緑）行: 先頭に SV 0.5 (= -100/0.5) を置く
+                    # 継承（緑）行: SV_2X (=1.0) を置く。1.0 の場合は -100 だが、
+                    # 明示的に置いておくことで意図を明確にする。
                     green = list(parts)
                     green[1] = _sv_line_value()
                     while len(green) < 7:
@@ -603,7 +609,7 @@ def build_song(song_key: str, keep_audio: bool = False,
                         or info['ln_ends'] != [h2(t) for t in info_1x['ln_ends']]):
                     raise SystemExit(f'[{version}] ノーツ時間が元の半分になっていません')
                 # BPM は2倍（表示を実際の速さに合わせる）+ 各 BPM 行に SV_2X の緑線
-                # （見た目のスクロール速度を 1倍速に揃える）
+                # （Fixed では見た目のスクロール速度を 1倍速に揃える）
                 red_1x = [(t, bl) for t, bl in info_1x['timing'] if bl > 0]
                 red_2x = [(t, bl) for t, bl in info['timing'] if bl > 0]
                 if [(h2(t), bl / 2) for t, bl in red_1x] != red_2x:
