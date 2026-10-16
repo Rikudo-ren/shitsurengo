@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
 """Build osu! beatmapset archives for all songs in the project.
 
-Each .osz is a zip archive (no enclosing folder) holding every chart:
-    1x 譜面 (音源: <song>.mp3) + 2x 譜面 (全時間を半分に, 音源: <song> (2x).mp3)
-    + サムネイル.png
+1曲につき *2つ* の .osz を作る:
+    <song_key>.osz      1倍速 3譜面 + <song>.mp3
+    <song_key>_2x.osz   2倍速 3譜面 + <song> (2x).mp3
+
+osu! は 1つの beatmapset に音源を2つ入れることを想定していない
+（Ranking Criteria: "A beatmapset may only contain one song file used by all
+difficulties. Multiple song files within a single beatmap set is unsupported and
+results in unexpected behaviour with preview times, metadata, etc."）。
+実際、1倍速と2倍速を同居させると 1倍速の難易度に 2倍速の音源（半分の長さ）が
+割り当たる等の不具合が起きるため、速度ごとに別アーカイブに分けている。
 
 Usage:
-    python3 tools/build_osz.py                      # build all songs
-    python3 tools/build_osz.py --song shitsurengo   # build one song
-    python3 tools/build_osz.py --keep-audio         # skip 2x audio regeneration
-    python3 tools/build_osz.py --output /tmp/x.osz  # write somewhere else
+    python3 tools/build_osz.py                      # 全曲 × 1倍速/2倍速
+    python3 tools/build_osz.py --song shitsurengo --speed 1
+    python3 tools/build_osz.py --keep-audio         # 2倍速音源を作り直さない
+    python3 tools/build_osz.py --song shitsurengo --speed 2 --force-audio
+    python3 tools/build_osz.py --song shitsurengo --speed 1 --output /tmp/a.osz
 
 ビルド時に検証すること（不備を .osz に混入させないための門番）:
+    * .osz 内の音源が1つだけ（全譜面が同じ音源を参照）か ← 上記の非対応構成を防ぐ
     * メタデータ / モード / 背景 / 参照音源が正しいか
     * .osu に不可視文字・制御文字が混ざっていないか
-    * 4K として不正なノーツ（同時刻重複 / 範囲外の列 / LN の長さ / ノーツ数 0）が無いか
+    * 4K として不正なノーツ（同時刻重複 / レーン中央でない座標 / LN の長さ / 0件）が無いか
     * 打鍵音 (hitSound / hitSample) が全ノーツで統一されているか
     * ノーツ・プレビュー位置が音源の長さに収まっているか
     * 2倍速譜面が 1倍速譜面の時間を正しく半分にしたものか
@@ -479,24 +488,45 @@ def _audio_needs_build(audio_2x_path: pathlib.Path, src: pathlib.Path) -> bool:
     return src.stat().st_mtime > audio_2x_path.stat().st_mtime + 60
 
 
-def build_song(song_key: str, keep_audio: bool = False,
+def archive_name(song_key: str, speed: int) -> str:
+    """出力ファイル名。1倍速は <song_key>.osz、2倍速は <song_key>_2x.osz。"""
+    return f'{song_key}.osz' if speed == 1 else f'{song_key}_2x.osz'
+
+
+def build_song(song_key: str, speed: int = 1, keep_audio: bool = False,
                output: pathlib.Path | None = None, force_audio: bool = False) -> dict:
+    """1曲・1速度ぶんの .osz を作る。
+
+    1つの beatmapset に音源を2つ入れるのは osu! では非対応（上記 docstring）なので、
+    1倍速と2倍速は別の .osz に分ける。1倍速のビルドには音源の依存パッケージは不要。
+    """
+    if speed not in (1, 2):
+        raise SystemExit(f'speed は 1 か 2 です: {speed}')
     cfg = SONGS[song_key]
     song_dir = ROOT / 'songs' / cfg['dir']
     keys = cfg['keys']
-    audio = cfg['audio']
+    audio = cfg['audio'] if speed == 1 else cfg['audio_2x']
     bg = cfg['bg']
-    audio_2x = cfg['audio_2x']
     suffix_2x = cfg['suffix_2x']
-    output = pathlib.Path(output) if output else ROOT / f'{song_key}.osz'
+    output = pathlib.Path(output) if output else ROOT / archive_name(song_key, speed)
 
-    for name in (audio, bg, *(src for src, _ in cfg['diffs'])):
+    for name in (cfg['audio'], cfg['audio_2x'], bg, *(src for src, _ in cfg['diffs'])):
         if not (song_dir / name).is_file():
             raise SystemExit(f'必要なファイルがありません: {song_dir / name}')
 
-    audio_1x_s = mp3_duration(song_dir / audio)
-    audio_1x_ms = audio_1x_s * 1000 if audio_1x_s else None
-    if audio_1x_ms is None:
+    # 2倍速のときだけ 2倍速音源を用意する（1倍速のビルドは依存ゼロで通る）
+    if speed == 2:
+        audio_2x_path = song_dir / cfg['audio_2x']
+        if keep_audio or (not force_audio
+                          and not _audio_needs_build(audio_2x_path, song_dir / cfg['audio'])):
+            print(f'  2x audio: 既存の {cfg["audio_2x"]} を使用'
+                  '（1x を更新した場合は --force-audio で作り直してください）')
+        else:
+            make_2x_audio(song_dir / cfg['audio'], audio_2x_path)
+
+    audio_s = mp3_duration(song_dir / audio)
+    audio_ms = audio_s * 1000 if audio_s else None
+    if audio_ms is None:
         print(f'  ! {audio} の長さが読めませんでした（音源との突き合わせ検証を省略）')
 
     entries: list[tuple[str, bytes]] = []
@@ -507,8 +537,21 @@ def build_song(song_key: str, keep_audio: bool = False,
 
     for src, version in cfg['diffs']:
         text = (song_dir / src).read_text(encoding='utf-8')
-        info = parse_osu(text)
-        check(info, version, {audio, bg}, audio, bg, keys, audio_1x_ms)
+        version = version if speed == 1 else f'{version} {suffix_2x}'
+        info_1x = parse_osu(text)
+        if speed == 2:
+            text = to_2x_osu(text, version, audio)
+            info = parse_osu(text)
+            if (info['notes'], info['ln']) != (info_1x['notes'], info_1x['ln']):
+                raise SystemExit(f'[{version}] ノーツ数が一致しません: '
+                                 f'{info["notes"]}/{info["ln"]} vs '
+                                 f'{info_1x["notes"]}/{info_1x["ln"]}')
+            if (info['times'] != [h2(t) for t in info_1x['times']]
+                    or info['ln_ends'] != [h2(t) for t in info_1x['ln_ends']]):
+                raise SystemExit(f'[{version}] ノーツ時間が元の半分になっていません')
+        else:
+            info = info_1x
+        check(info, version, {audio, bg}, audio, bg, keys, audio_ms)
         meta = info['meta']
         artist = meta.get('ArtistUnicode') or meta.get('Artist', '')
         title = meta.get('TitleUnicode') or meta.get('Title', '')
@@ -519,39 +562,7 @@ def build_song(song_key: str, keep_audio: bool = False,
         chart_files.append(arcname)
         expected[version] = audio
 
-        # 2x 版
-        version_2x = f'{version} {suffix_2x}'
-        text_2x = to_2x_osu(text, version_2x, audio_2x)
-        info_2x = parse_osu(text_2x)
-        check(info_2x, version_2x, {audio_2x, bg}, audio_2x, bg, keys,
-              audio_1x_ms / 2 if audio_1x_ms else None)
-        if (info_2x['notes'], info_2x['ln']) != (info['notes'], info['ln']):
-            raise SystemExit(f'[{version_2x}] ノーツ数が一致しません: '
-                             f'{info_2x["notes"]}/{info_2x["ln"]} vs '
-                             f'{info["notes"]}/{info["ln"]}')
-        if (info_2x['times'] != [h2(t) for t in info['times']]
-                or info_2x['ln_ends'] != [h2(t) for t in info['ln_ends']]):
-            raise SystemExit(f'[{version_2x}] ノーツ時間が元の半分になっていません')
-        arcname_2x = chart_arcname(meta, version_2x)
-        entries.append((arcname_2x, text_2x.encode('utf-8')))
-        summaries.append(summary_line(version_2x, info_2x, arcname_2x))
-        chart_files.append(arcname_2x)
-        expected[version_2x] = audio_2x
-
-    # 音源
-    audio_2x_path = song_dir / audio_2x
-    if keep_audio or (not force_audio and not _audio_needs_build(audio_2x_path, song_dir / audio)):
-        if not audio_2x_path.is_file():
-            raise SystemExit(
-                f'2倍速音源がありません: {audio_2x_path}\n'
-                '  pip install soundfile numpy lameenc のうえ、--keep-audio を外して再実行してください。'
-            )
-        print(f'  2x audio: 既存の {audio_2x} を使用'
-              '（--keep-audio / 1x が新しい場合は --keep-audio を外してください）')
-    else:
-        make_2x_audio(song_dir / audio, audio_2x_path)
     entries.append((audio, (song_dir / audio).read_bytes()))
-    entries.append((audio_2x, audio_2x_path.read_bytes()))
     entries.append((bg, (song_dir / bg).read_bytes()))
 
     write_zip(output, entries)
@@ -562,6 +573,12 @@ def build_song(song_key: str, keep_audio: bool = False,
         assert bad is None, f'zip が壊れています: {bad}'
         versions = set()
         names = set(zf.namelist())
+        # osu! は 1 set 1 音源。複数の音源を入れると難易度に別の音源が割り当たる
+        audios = sorted(n for n in names
+                        if n.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a', '.flac')))
+        if audios != [audio]:
+            raise SystemExit('.osz 内の音源が1つではありません: '
+                             f'{audios}（1 set 1 音源にしてください）')
         for name in zf.namelist():
             if name.endswith('.osu'):
                 if '/' in name:
@@ -569,18 +586,17 @@ def build_song(song_key: str, keep_audio: bool = False,
                 info3 = parse_osu(zf.read(name).decode('utf-8'))
                 version3 = info3['meta']['Version']
                 versions.add(version3)
-                limit = (audio_1x_ms or 0) / 2 if '2x' in version3 else audio_1x_ms
-                check(info3, version3, names, expected[version3], bg, keys, limit)
+                check(info3, version3, names, expected[version3], bg, keys, audio_ms)
         assert versions == set(expected), f'期待された難易度: {set(expected)}, 実際: {versions}'
 
     size_mb = output.stat().st_size / 1_000_000
-    print(f'{title} / {artist} — 1倍速{len(cfg["diffs"])}譜面 + 2倍速{len(cfg["diffs"])}譜面'
-          f'の .osz を作成しました')
+    print(f'{title} / {artist} — {speed}倍速 {len(cfg["diffs"])}譜面の .osz を作成しました')
     print('\n'.join(summaries))
-    print(f'  + audio: {audio} / {audio_2x} / background: {bg}')
+    print(f'  + audio: {audio} / background: {bg}')
     print(f'-> {output} ({size_mb:.2f} MB, {len(entries)} files)')
     return {'entries': entries, 'chart_files': chart_files, 'summary': summaries,
-            'versions': expected, 'size': output.stat().st_size, 'output': output}
+            'versions': expected, 'size': output.stat().st_size, 'output': output,
+            'speed': speed, 'audio': audio}
 
 
 def main() -> int:
@@ -588,8 +604,10 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--song', type=str, choices=list(SONGS.keys()),
                     help='ビルドする曲を指定 (省略時は全曲)')
+    ap.add_argument('--speed', type=str, choices=('1', '2', 'all'), default='all',
+                    help='ビルドする速度 (既定: all = 1倍速と2倍速の両方)')
     ap.add_argument('--output', type=pathlib.Path,
-                    help='出力先 .osz (既定: リポジトリ直下/<song_key>.osz)')
+                    help='出力先 .osz (--song と --speed を指定したときのみ)')
     ap.add_argument('--keep-audio', action='store_true',
                     help='2倍速音源を再生成せず既存のものを使う')
     ap.add_argument('--force-audio', action='store_true',
@@ -597,14 +615,17 @@ def main() -> int:
     args = ap.parse_args()
 
     keys = [args.song] if args.song else list(SONGS.keys())
-    if args.output and len(keys) > 1:
-        raise SystemExit('--output は --song と併用してください（複数曲を1ファイルには書けません）')
-    for key in keys:
-        build_song(key, keep_audio=args.keep_audio, output=args.output,
-                   force_audio=args.force_audio)
-        print()
+    speeds = (1, 2) if args.speed == 'all' else (int(args.speed),)
+    if args.output and len(keys) * len(speeds) > 1:
+        raise SystemExit('--output は --song と --speed を指定したときのみ使えます')
 
-    print('全曲のビルドが完了しました。')
+    for key in keys:
+        for speed in speeds:
+            build_song(key, speed=speed, keep_audio=args.keep_audio,
+                       output=args.output, force_audio=args.force_audio)
+            print()
+
+    print('ビルドが完了しました。')
     return 0
 
 

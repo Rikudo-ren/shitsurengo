@@ -229,119 +229,142 @@ class CheckTest(unittest.TestCase):
             self._check(text)
 
 
-class SingleOszTest(unittest.TestCase):
-    """1つの .osz に 1倍速の全譜面 + 2倍速の全譜面が同居していること。"""
+class PerSpeedOszTest(unittest.TestCase):
+    """1曲につき速度ごとに1つの .osz。1つの .osz = 1つの音源（osu! の前提）。"""
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.archive = {}   # song_key -> (path, names, {Version: info}, {Version: text})
+        cls.archive = {}   # (song_key, speed) -> dict(path=, names=, charts=, texts=)
         for key in SONG_KEYS:
-            out = pathlib.Path(cls.tmp.name) / f'{key}.osz'
-            build_osz.build_song(key, keep_audio=True, output=out)
-            charts, texts = {}, {}
-            with zipfile.ZipFile(out) as zf:
-                names = zf.namelist()
-                for name in names:
-                    if name.endswith('.osu'):
-                        text = zf.read(name).decode('utf-8')
-                        info = build_osz.parse_osu(text)
-                        charts[info['meta']['Version']] = info
-                        texts[info['meta']['Version']] = text
-            cls.archive[key] = (out, names, charts, texts)
+            for speed in (1, 2):
+                out = pathlib.Path(cls.tmp.name) / build_osz.archive_name(key, speed)
+                build_osz.build_song(key, speed=speed, keep_audio=True, output=out)
+                charts, texts = {}, {}
+                with zipfile.ZipFile(out) as zf:
+                    names = zf.namelist()
+                    for name in names:
+                        if name.endswith('.osu'):
+                            text = zf.read(name).decode('utf-8')
+                            info = build_osz.parse_osu(text)
+                            charts[info['meta']['Version']] = info
+                            texts[info['meta']['Version']] = text
+                cls.archive[(key, speed)] = dict(path=out, names=names, charts=charts,
+                                                 texts=texts)
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_versions_are_all_1x_and_2x(self):
-        for key in SONG_KEYS:
-            cfg = build_osz.SONGS[key]
-            want = {v for _, v in cfg['diffs']}
-            want |= {f'{v} {cfg["suffix_2x"]}' for _, v in cfg['diffs']}
-            with self.subTest(song=key):
-                self.assertEqual(set(self.archive[key][2]), want)
+    def test_archive_name(self):
+        self.assertEqual(build_osz.archive_name('shitsurengo', 1), 'shitsurengo.osz')
+        self.assertEqual(build_osz.archive_name('shitsurengo', 2), 'shitsurengo_2x.osz')
 
-    def test_archive_is_flat_with_both_audio_files(self):
+    def test_versions_are_only_that_speed(self):
         for key in SONG_KEYS:
             cfg = build_osz.SONGS[key]
-            out, names, charts, _ = self.archive[key]
-            with self.subTest(song=key):
-                self.assertTrue(zipfile.ZipFile(out).testzip() is None)
-                self.assertEqual(
-                    set(names),
-                    {build_osz.chart_arcname(c['meta'], v) for v, c in charts.items()}
-                    | {cfg['audio'], cfg['audio_2x'], cfg['bg']})
-                for name in names:   # フォルダを作らない（ドラッグ&ドロップ用）
-                    self.assertNotIn('/', name)
+            for speed in (1, 2):
+                want = {v if speed == 1 else f'{v} {cfg["suffix_2x"]}'
+                        for _, v in cfg['diffs']}
+                with self.subTest(song=key, speed=speed):
+                    self.assertEqual(set(self.archive[(key, speed)]['charts']), want)
 
-    def test_each_chart_points_at_the_matching_audio(self):
+    def test_archive_has_exactly_one_audio_file(self):
+        """1 set 1 音源。複数の音源を入れると osu! が難易度に別の音源を割り当ててしまう。"""
         for key in SONG_KEYS:
             cfg = build_osz.SONGS[key]
-            _, names, charts, _ = self.archive[key]
-            with self.subTest(song=key):
-                self.assertIn(cfg['bg'], names)   # 背景は全譜面で共有
-                for version, info in charts.items():
-                    audio = info['general']['AudioFilename']
+            for speed in (1, 2):
+                arc = self.archive[(key, speed)]
+                audios = sorted(n for n in arc['names']
+                                if n.lower().endswith(('.mp3', '.ogg', '.wav')))
+                want = cfg['audio'] if speed == 1 else cfg['audio_2x']
+                with self.subTest(song=key, speed=speed):
+                    self.assertEqual(audios, [want])
+
+    def test_archive_is_flat_with_background(self):
+        for key in SONG_KEYS:
+            cfg = build_osz.SONGS[key]
+            for speed in (1, 2):
+                arc = self.archive[(key, speed)]
+                with self.subTest(song=key, speed=speed):
+                    with zipfile.ZipFile(arc['path']) as zf:
+                        self.assertIsNone(zf.testzip())
                     self.assertEqual(
-                        audio, cfg['audio_2x'] if '2x' in version else cfg['audio'])
-                    self.assertIn(audio, names)   # 参照先が同梱されている
-                    self.assertIn(cfg['bg'], info['events'][0])
+                        set(arc['names']),
+                        {build_osz.chart_arcname(c['meta'], v)
+                         for v, c in arc['charts'].items()}
+                        | {cfg['bg']}
+                        | {cfg['audio'] if speed == 1 else cfg['audio_2x']})
+                    for name in arc['names']:
+                        self.assertNotIn('/', name)   # フォルダを作らない
+
+    def test_every_chart_points_at_the_archive_audio(self):
+        for key in SONG_KEYS:
+            cfg = build_osz.SONGS[key]
+            for speed in (1, 2):
+                arc = self.archive[(key, speed)]
+                with self.subTest(song=key, speed=speed):
+                    self.assertIn(cfg['bg'], arc['names'])   # 背景は全譜面で共有
+                    for version, info in arc['charts'].items():
+                        audio = info['general']['AudioFilename']
+                        self.assertIn(audio, arc['names'])    # 参照先が同梱されている
+                        self.assertEqual(
+                            audio, cfg['audio_2x'] if '2x' in version else cfg['audio'])
+                        self.assertIn(cfg['bg'], info['events'][0])
 
     def test_charts_are_mapped_by_mamekina(self):
         for key in SONG_KEYS:
-            _, _, charts, _ = self.archive[key]
-            with self.subTest(song=key):
-                for version, info in charts.items():
-                    self.assertEqual(info['meta']['Creator'], 'mamekina')
-                    self.assertEqual(info['meta']['Version'], version)
+            for speed in (1, 2):
+                for version, info in self.archive[(key, speed)]['charts'].items():
+                    with self.subTest(song=key, speed=speed, version=version):
+                        self.assertEqual(info['meta']['Creator'], 'mamekina')
+                        self.assertEqual(info['meta']['Version'], version)
 
     def test_2x_charts_are_the_1x_charts_halved(self):
         for key in SONG_KEYS:
             cfg = build_osz.SONGS[key]
-            _, _, charts, _ = self.archive[key]
+            base = self.archive[(key, 1)]['charts']
+            fast = self.archive[(key, 2)]['charts']
             with self.subTest(song=key):
                 for _, version in cfg['diffs']:
-                    info = charts[version]
-                    info_2x = charts[f'{version} {cfg["suffix_2x"]}']
+                    info = base[version]
+                    info_2x = fast[f'{version} {cfg["suffix_2x"]}']
                     self.assertEqual(info_2x['notes'], info['notes'])
                     self.assertEqual(info_2x['ln'], info['ln'])
                     self.assertEqual(info_2x['times'],
                                      [build_osz.h2(t) for t in info['times']])
                     self.assertEqual(info_2x['ln_ends'],
                                      [build_osz.h2(t) for t in info['ln_ends']])
+                    self.assertLess(info_2x['last_ms'], info['last_ms'])
 
-    def test_2x_chart_text_halves_timing_points_only(self):
+    def test_2x_chart_text_swaps_audio_and_tags(self):
         for key in SONG_KEYS:
             cfg = build_osz.SONGS[key]
-            _, _, charts, texts = self.archive[key]
-            version = cfg['diffs'][0][1]
-            text = texts[f'{version} {cfg["suffix_2x"]}']
-            info = charts[f'{version} {cfg["suffix_2x"]}']
+            _, version = cfg['diffs'][0]
+            version_2x = f'{version} {cfg["suffix_2x"]}'
+            text = self.archive[(key, 2)]['texts'][version_2x]
+            info = self.archive[(key, 2)]['charts'][version_2x]
             with self.subTest(song=key):
                 self.assertIn(f'AudioFilename: {cfg["audio_2x"]}', text)
-                self.assertIn(f'Version:{version} {cfg["suffix_2x"]}', text)
+                self.assertIn(f'Version:{version_2x}', text)
                 self.assertIn('2x', info['meta']['Tags'].split())
-                # 2倍速側の譜面は 1倍速側より短い（曲の長さが半分）
-                self.assertLess(info['last_ms'], charts[version]['last_ms'])
 
     def test_no_invisible_chars_in_any_chart(self):
         for key in SONG_KEYS:
-            _, _, charts, _ = self.archive[key]
-            with self.subTest(song=key):
-                for version, info in charts.items():
-                    self.assertEqual(info['invisible'], [], f'{version} に不可視文字')
+            for speed in (1, 2):
+                for version, info in self.archive[(key, speed)]['charts'].items():
+                    with self.subTest(song=key, speed=speed, version=version):
+                        self.assertEqual(info['invisible'], [])
 
     def test_hit_sounds_are_uniform_in_any_chart(self):
         for key in SONG_KEYS:
-            _, _, charts, _ = self.archive[key]
-            with self.subTest(song=key):
-                for version, info in charts.items():
+            for speed in (1, 2):
+                for version, info in self.archive[(key, speed)]['charts'].items():
                     for o in info['objects']:
-                        self.assertEqual(o['hit_sound'], 0,
-                                         f'{version} @ {o["t"]}ms の hitSound')
-                        self.assertEqual(o['sample'], normalize_osu.SAMPLE,
-                                         f'{version} @ {o["t"]}ms の hitSample')
+                        with self.subTest(song=key, speed=speed, version=version):
+                            self.assertEqual(o['hit_sound'], 0, f'@{o["t"]}ms')
+                            self.assertEqual(o['sample'], normalize_osu.SAMPLE,
+                                             f'@{o["t"]}ms')
 
     def test_source_charts_need_no_normalization(self):
         """コミットされている .osu は正規化済み（tools/normalize_osu.py --check 相当）。"""
