@@ -71,10 +71,10 @@ SONGS = {
         'dir': '失理論後',
         'keys': 4,
         'diffs': [('easy.osu', 'Easy'), ('normal.osu', 'Normal'), ('hard.osu', 'Hard')],
-        'audio': '失理論後.mp3',
-        'bg': 'サムネイル.png',
-        'audio_2x': '失理論後_x2.mp3',
-        'suffix_2x': '（x2）',
+        'audio': 'audio.mp3',
+        'bg': 'bg.png',
+        'audio_2x': 'audio_x2.mp3',
+        'suffix_2x': '_x2',
     },
 }
 

@@ -16,8 +16,8 @@
       "id": "shitsurirongo",
       "title": "失理論後",
       "artist": "櫻優",
-      "audio": "songs/失理論後/失理論後.mp3",
-      "thumb": "songs/失理論後/サムネイル.png",
+      "audio": "songs/失理論後/audio.mp3",
+      "thumb": "songs/失理論後/bg.png",
       "diffs": [
         { "name": "Easy", "level": 6, "file": "songs/失理論後/easy.osu" },
         { "name": "Normal", "level": 7, "file": "songs/失理論後/normal.osu" },

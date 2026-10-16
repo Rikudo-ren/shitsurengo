@@ -13,6 +13,7 @@
 """
 
 import importlib.util
+import json
 import pathlib
 import tempfile
 import unittest
@@ -295,6 +296,41 @@ class SingleOszBothSpeedsTest(unittest.TestCase):
 
     def test_archive_name(self):
         self.assertEqual(build_osz.archive_name('shitsurengo'), 'shitsurengo.osz')
+
+    def test_shitsurirongo_upload_safe_names_and_references(self):
+        """再生成物と配布物の両方で、素材名・Version に全角文字を戻さない。"""
+        arc = self.archive['shitsurirongo']
+        versions = {'Easy', 'Normal', 'Hard', 'Easy_x2', 'Normal_x2', 'Hard_x2'}
+        resources = {'audio.mp3', 'audio_x2.mp3', 'bg.png'}
+        for path in (arc['path'], ROOT / 'shitsurirongo.osz'):
+            with self.subTest(archive=str(path)), zipfile.ZipFile(path) as zf:
+                self.assertIsNone(zf.testzip())
+                self.assertEqual(len(zf.namelist()), 9)
+                self.assertEqual({n for n in zf.namelist() if not n.endswith('.osu')},
+                                 resources)
+                charts = [build_osz.parse_osu(zf.read(n).decode('utf-8'))
+                          for n in zf.namelist() if n.endswith('.osu')]
+                self.assertEqual({c['meta']['Version'] for c in charts}, versions)
+                for info in charts:
+                    version = info['meta']['Version']
+                    self.assertTrue(version.isascii())
+                    self.assertEqual(info['general']['AudioFilename'],
+                                     'audio_x2.mp3' if version.endswith('_x2') else 'audio.mp3')
+                    self.assertIn('0,0,"bg.png",0,0', info['events'])
+                    self.assertEqual(info['meta']['TitleUnicode'], '失理論後')
+                for name in resources:
+                    self.assertRegex(name, r'^[A-Za-z0-9_]+[.][a-z0-9]+$')
+                    self.assertEqual(zf.read(name),
+                                     (ROOT / 'songs' / '失理論後' / name).read_bytes())
+
+    def test_shitsurirongo_web_paths_exist(self):
+        """素材のリネーム後もWeb版の音源・サムネイル参照を維持する。"""
+        manifest = json.loads((ROOT / 'songs' / 'songs.json').read_text(encoding='utf-8'))
+        song = next(s for s in manifest['songs'] if s['title'] == '失理論後')
+        self.assertEqual(song['audio'], 'songs/失理論後/audio.mp3')
+        self.assertEqual(song['thumb'], 'songs/失理論後/bg.png')
+        for field in ('audio', 'thumb'):
+            self.assertTrue((ROOT / song[field]).is_file())
 
     def test_both_speeds_are_in_one_archive(self):
         for key in SONG_KEYS:
