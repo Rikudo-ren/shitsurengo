@@ -11,6 +11,18 @@
         { "name": "Normal", "level": 9, "file": "songs/失恋後/normal.osu" },
         { "name": "Hard", "level": 11, "file": "songs/失恋後/hard.osu" }
       ]
+    },
+    {
+      "id": "shitsurirongo",
+      "title": "失理論後",
+      "artist": "櫻優",
+      "audio": "songs/失理論後/失理論後.mp3",
+      "thumb": "songs/失理論後/サムネイル.png",
+      "diffs": [
+        { "name": "Easy", "level": 6, "file": "songs/失理論後/easy.osu" },
+        { "name": "Normal", "level": 7, "file": "songs/失理論後/normal.osu" },
+        { "name": "Hard", "level": 10, "file": "songs/失理論後/hard.osu" }
+      ]
     }
   ]
 }

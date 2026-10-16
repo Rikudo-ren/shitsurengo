@@ -3,7 +3,7 @@ osu file format v14
 [General]
 AudioFilename: 失理論後.mp3
 AudioLeadIn: 0
-PreviewTime: -1
+PreviewTime: 84791
 Countdown: 0
 SampleSet: All
 StackLeniency: 0.7
@@ -20,14 +20,16 @@ GridSize: 8
 TimelineZoom: 2.20004
 
 [Metadata]
-Title:Unknown Title
-TitleUnicode:Unknown Title
-Artist:Unknown Artist
-ArtistUnicode:Unknown Artist
-Creator:Mapperatorinator
-Version:Mapperatorinator V32
+Title:Shitsurirongo
+TitleUnicode:失理論後
+Artist:櫻優
+ArtistUnicode:櫻優
+Creator:mamekina
+Version:Easy
+BeatmapID:0
+BeatmapSetID:-1
 Source:
-Tags:model=OliBomby/Mapperatorinator-v32 difficulty=1.5 year=2023 hitsounded=True descriptors="[style/clean,style]" negative_descriptors="[style/LN release,style/LN coordination,style/LN mixed ]" seed=26398 top_p=0.9 timer_num_beams=2 generate_positions=False
+Tags:shitsurirongo mania 4k mapperatorinator
 
 [Difficulty]
 HPDrainRate:5.0
@@ -39,6 +41,7 @@ SliderTickRate:1.0
 
 [Events]
 //Background and Video events
+0,0,"サムネイル.png",0,0
 //Break Periods
 //Storyboard Layer 0 (Background)
 //Storyboard Layer 1 (Fail)
