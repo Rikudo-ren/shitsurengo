@@ -131,12 +131,25 @@ class To2xOsuTest(unittest.TestCase):
         """BPM 表示は実際の速さ（2倍）にし、SV 0.5 で見た目の速度を 1倍速に揃える。"""
         self.assertIn("548,178.57142857142858,4,2,-1,100,1,0", self.out)  # 336 BPM
         self.assertIn("548,-200,4,2,-1,100,0,0", self.out)                # SV 0.5
-        self.assertIn("0,-200,4,2,-1,100,0,0", self.out)                  # 最初から効かせる
+        self.assertNotIn("0,-200,4,2,-1,100,0,0", self.out)  # 赤線前の緑線は stable で危険
         # 赤線（BPM）には必ず緑線（SV）が同じ時刻に付く
         for line in self.out.split("[TimingPoints]")[1].split("\n\n")[0].strip().splitlines():
             fields = line.split(',')
             if float(fields[1]) > 0:
                 self.assertIn(f'{fields[0]},-200,4,2,-1,100,0,0', self.out)
+
+    def test_first_control_point_is_a_bpm_change(self):
+        # The old generator passed all timing/SV tests but began with a green line.
+        # Regression for osu!stable-issues #1315/#1316 (mania infinite load).
+        for key in SONG_KEYS:
+            cfg = build_osz.SONGS[key]
+            for src, version in cfg['diffs']:
+                with self.subTest(song=key, version=version):
+                    text = (ROOT / 'songs' / cfg['dir'] / src).read_text(encoding='utf-8')
+                    out = build_osz.to_2x_osu(text, version + cfg['suffix_2x'], cfg['audio_2x'])
+                    first = out.split('[TimingPoints]')[1].strip().splitlines()[0].split(',')
+                    self.assertGreater(float(first[1]), 0)
+                    self.assertEqual(first[6], '1')
 
     def test_scroll_speed_matches_1x(self):
         """1秒あたりの移動量 ∝ BPM × SV が 1倍速と揃っていること。"""
@@ -351,8 +364,8 @@ class SingleOszBothSpeedsTest(unittest.TestCase):
                     bpm = [l for l in section.strip().splitlines() if float(l.split(',')[1]) > 0]
                     sv = [l for l in section.strip().splitlines() if float(l.split(',')[1]) < 0]
                     self.assertTrue(bpm and sv, 'BPM行とSV行の両方があること')
-                    self.assertEqual(set(sv), {f'0,-200,4,2,-1,100,0,0'}
-                                     | {f'{l.split(",")[0]},-200,4,2,-1,100,0,0' for l in bpm})
+                    self.assertEqual(set(sv),
+                                     {f'{l.split(",")[0]},-200,4,2,-1,100,0,0' for l in bpm})
                     # 1倍速の BPM × SV 1.0 = 2倍速の BPM × SV 0.5（見た目の速さが同じ）
                     one = arc['charts'][version]
                     two = arc['charts'][f'{version}{cfg["suffix_2x"]}']
