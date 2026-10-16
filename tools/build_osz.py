@@ -236,7 +236,6 @@ def mp3_duration(path: pathlib.Path) -> float | None:
 
 def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
     out: list[str] = []
-    timing_started = False
     sec = ''
     for line in text.splitlines():
         stripped = line.strip()
@@ -245,16 +244,10 @@ def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
             out.append(line)
             continue
 
-        if sec == '[TimingPoints]' and not timing_started:
-            timing_started = True
-            fields = [f.strip() for f in line.split(',')]
-            if len(fields) >= 2 and float(fields[1]) > 0:
-                # 最初の BPM 行より前にもノーツがある譜面があるため、SV を 0 から効かせる
-                green0 = ['0', _sv_line_value()] + fields[2:6]
-                while len(green0) < 6:
-                    green0.append('100')
-                green0 += ['0', '0']    # inherited, effects
-                out.append(','.join(green0))
+        # BPM（赤線）より前に緑線を挿入しない。
+        # stable の mania には「最初の制御点が timing change でない」と
+        # プレイ開始時に無限ループする既知の不具合がある（stable-issues #1315/#1316）。
+        # SV は各赤線の直後だけに置く。音源・ノーツ時刻は変えない。
 
         if sec == '[General]':
             m = re.match(r'(AudioFilename)\s*:\s*(.*?)\s*$', line)
@@ -456,6 +449,9 @@ def check(info: dict, version: str, names_in_zip: set[str], audio: str,
             errors.append(f'[Metadata] {key} が未設定です: {meta.get(key)!r}')
 
     # --- ここから「osu! で壊れる/不快になる」不備の検出 ---
+    if not info['timing'] or info['timing'][0][1] <= 0:
+        errors.append('[TimingPoints] の先頭は正の beatLength の BPM 行にしてください'
+                      '（先頭の緑線は osu!stable mania の無限ロードを起こし得ます）')
     if info['invisible']:
         shown = ', '.join(sorted({c for _, c in info['invisible']})[:5])
         errors.append(f'不可視文字・制御文字が混ざっています ({shown})'
@@ -614,7 +610,7 @@ def build_song(song_key: str, keep_audio: bool = False,
                     raise SystemExit(f'[{version}] BPM が 1倍速の2倍になっていません')
                 sv_want = -100 / SV_2X
                 greens = {t for t, bl in info['timing'] if bl < 0}
-                need = {0.0} | {float(t) for t, _ in red_2x}
+                need = {float(t) for t, _ in red_2x}
                 if greens != need or any(bl != sv_want
                                          for _, bl in info['timing'] if bl < 0):
                     raise SystemExit(f'[{version}] SV {SV_2X} の緑線が BPM 行に'
