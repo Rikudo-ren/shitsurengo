@@ -57,43 +57,41 @@ python3 -m http.server 8901
 
 ## osu! で遊ぶ (.osz)
 
-選曲画面の「⬇ 通常版 / ⬇ 2倍速版」から、またはリポジトリ直下の
-[`shitsurengo.osz`](shitsurengo.osz) などを直接ダウンロードできます。
-osu! / osu!lazer にドロップ（またはダブルクリック）するとインポートされます。
+選曲画面の「⬇ osu! 譜面 (.osz) をダウンロード」から、またはリポジトリ直下の
+[`shitsurengo.osz`](shitsurengo.osz) / [`shitsurirongo.osz`](shitsurirongo.osz) を
+直接ダウンロードできます。osu! / osu!lazer にドロップ（またはダブルクリック）でインポート。
+**1倍速の全譜面と2倍速の全譜面を1つの .osz に同梱**しているので、これ1つで全部遊べます。
 
 | 配布ファイル | 中身 |
 |---|---|
-| `shitsurengo.osz` (3.88 MB) | 失恋後 1倍速: Easy 643 / Normal 1683 / Hard 1886 notes + `失恋後.mp3` + 背景 |
-| `shitsurengo_2x.osz` (2.52 MB) | 失恋後 2倍速: `Easy (2x)` / `Normal (2x)` / `Hard (2x)` + `失恋後 (2x).mp3` + 背景 |
-| `shitsurirongo.osz` (6.96 MB) | 失理論後 1倍速: Easy 1091 / Normal 1204 / Hard 1759 notes + `失理論後.mp3` + 背景 |
-| `shitsurirongo_2x.osz` (4.02 MB) | 失理論後 2倍速: `Easy (2x)` / `Normal (2x)` / `Hard (2x)` + `失理論後 (2x).mp3` + 背景 |
+| `shitsurengo.osz` | 失恋後: Easy 643 / Normal 1683 / Hard 1886 notes + `Easy_x2` / `Normal_x2` / `Hard_x2` |
+| `shitsurirongo.osz` | 失理論後: Easy 1091 / Normal 1204 / Hard 1759 notes + `Easy_x2` / `Normal_x2` / `Hard_x2` |
 
-**1倍速と2倍速は別ファイル**です。osu! は 1つの beatmapset に音源を2つ入れることを
-想定しておらず（Ranking Criteria: *"A beatmapset may only contain one song file used by
-all difficulties. Multiple song files within a single beatmap set is unsupported and
-results in unexpected behaviour with preview times, metadata, etc."*）、実際に同居させると
-**1倍速の難易度に 2倍速の音源（半分の長さ）が割り当たる**などの不具合が出ます。
-そのためビルド時に「.osz 内の音源が1つだけ」を検証しています。
-
-- 中身はフラット構成（フォルダなし）で、`.osu` ×3 + 音源 ×1 + 背景 `サムネイル.png` ×1
-- 2倍速版は「同じ譜面を2倍速にしたもの」で、音は Web 版の 2.0x と同じ（速度+ピッチ）
-- 譜面の `Creator:` は `mamekina`（osu! の曲画面に出る "beatmap by 〜" の表記）
+- **難易度ごとに参照する音源を .osu の中で指定**しています（`[General]` の
+  `AudioFilename`）。1倍速の譜面 → `失恋後.mp3` / 2倍速の譜面 → `失恋後_x2.mp3`。
+  中身はフラット構成（フォルダなし）で、`.osu` ×6 + 音源 ×2 + 背景 `サムネイル.png`。
+- **2倍速の難易度名を `Easy_x2` 形式にしているのは並び順のため**（大事）。
+  osu! はセットの曲情報（長さ・プレビュー）に「セット内で先に並ぶ方の音源/譜面」を使う。
+  以前の `Easy (2x)` という名前は `Easy` より **前** に並んでしまう
+  （`'('` や空白は `']'` や `'.'` より小さい）ため、セットの曲が2倍速の音源
+  （85.75s）と認識され、**1倍速の譜面が 2:51 ではなく 1:25 になっていました**。
+  `Easy_x2` / `失恋後_x2.mp3` は必ず後ろに並ぶので、セットの曲はフル尺の 1倍速になります。
 - 打鍵音は全ノーツとも soft・音量50（`hitSound=0` / `hitSample=2:2:0:50:`）に統一。
   自動生成譜面は clap/whistle/finish がランダムに付き、音量も 20〜80 とバラつくため、
   osu! でそのまま遊ぶと打鍵音が鳴ったり鳴らなかったりします
-- 2倍速譜面の音源は「1倍速音源を2サンプルずつ間引いた波形」と**サンプル単位で一致**
-  （MP3 符号化の遅延 約1100サンプル = 23ms を実測して補正。以前は 2倍速側だけ 23ms
-  ノーツが先行していました）
+- 2倍速音源は「1倍速音源を2サンプルずつ間引いた波形」と**サンプル単位で一致**させています
+  （MP3 符号化器の遅延 約1100サンプル = 23ms を実測して補正。補正しないと2倍速側だけ
+  ノーツが 23ms 先行する）
 - 譜面を編集したら `python3 tools/build_osz.py` で .osz を作り直し、一緒にコミットしてください。
-  `--song <id> --speed 1|2` で片方だけ、`--force-audio` で 2倍速音源も必ず作り直せます
-  （既定は 1倍速より新しければ再利用）。1倍速のビルドは soundfile 等が無くても動きます。
+  `--force-audio` を付けると 2倍速音源も必ず作り直します（既定は 1倍速より新しければ再利用）。
+- ビルドした .osz では「1倍速の音源・譜面が 2倍速より前に並ぶ」ことを検証しています。
 
 ### ビルド時に弾かれる不備（`tools/build_osz.py`）
 
 .osz に混入させたくないものはビルド時に検証して落とします:
 
-- **`.osz` 内の音源が2つ以上ある**（＝ 1 set 1 音源の原則違反。上記の不具合の原因）
 - メタデータ / `Mode: 3` / 背景 / 参照音源が欠けている、`.osz` 内にファイルが無い
+- 各譜面の `AudioFilename` が自分の速度の音源を指していない / 音源の並び順が逆
 - `.osu` に不可視文字・制御文字（`U+034F` など。混ざると `[Colours]` の色が無視される）
 - 打鍵音 (`hitSound` / `hitSample`) がノーツごとにバラついている
 - 4K として不正なノーツ（レーン中央でない座標 / 同じレーン・同時刻の重複 /

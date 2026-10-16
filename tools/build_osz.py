@@ -1,26 +1,36 @@
 #!/usr/bin/env python3
 """Build osu! beatmapset archives for all songs in the project.
 
-1曲につき *2つ* の .osz を作る:
-    <song_key>.osz      1倍速 3譜面 + <song>.mp3
-    <song_key>_2x.osz   2倍速 3譜面 + <song> (2x).mp3
+1曲につき *1つ* の .osz を作る（1倍速3譜面 + 2倍速3譜面 + 音源2つ）:
+    <song_key>.osz      1倍速 Easy/Normal/Hard + 2倍速 Easy_x2/Normal_x2/Hard_x2
 
-osu! は 1つの beatmapset に音源を2つ入れることを想定していない
-（Ranking Criteria: "A beatmapset may only contain one song file used by all
-difficulties. Multiple song files within a single beatmap set is unsupported and
-results in unexpected behaviour with preview times, metadata, etc."）。
-実際、1倍速と2倍速を同居させると 1倍速の難易度に 2倍速の音源（半分の長さ）が
-割り当たる等の不具合が起きるため、速度ごとに別アーカイブに分けている。
+難易度ごとに参照する音源は .osu の [General] `AudioFilename` で指定する
+（1倍速 → <song>.mp3 / 2倍速 → <song>_x2.mp3）。これで1セットに両方入る。
+
+ただし osu! は「セットの曲情報（長さ・プレビュー・BPM 表示など）」に
+セット内のどれか1つの音源を使う。どれが選ばれるかは **ファイル名の並び順** に
+左右され、`失恋後 (2x).mp3` は `失恋後.mp3` より前に並ぶため（全角・半角を問わず
+' ' や '(' は '.' より小さい）、2倍速の音源＝半分の長さがセットの曲として
+扱われ「1倍速の譜面が 2:51 ではなく 1:25 になる」不具合が出ていた。
+そこで **1倍速側が必ず先に並ぶ名前** にしてある:
+
+    1倍速: <song>.mp3        Version "Easy"      ← 先に並ぶ
+    2倍速: <song>_x2.mp3     Version "Easy_x2"   ← 後に並ぶ
+
+`Easy_x2` / `_x2` は、'.' や '_' を無視する比較（カルチャ依存の並べ替え）でも
+`Easy` / `<song>.mp3` より後になる（'x' > 'm' > '2'）。ビルド時に
+「1倍速の音源・譜面ファイル名が 2倍速より前に並ぶ」ことを検証している。
 
 Usage:
-    python3 tools/build_osz.py                      # 全曲 × 1倍速/2倍速
-    python3 tools/build_osz.py --song shitsurengo --speed 1
+    python3 tools/build_osz.py                      # 全曲
+    python3 tools/build_osz.py --song shitsurengo
     python3 tools/build_osz.py --keep-audio         # 2倍速音源を作り直さない
-    python3 tools/build_osz.py --song shitsurengo --speed 2 --force-audio
-    python3 tools/build_osz.py --song shitsurengo --speed 1 --output /tmp/a.osz
+    python3 tools/build_osz.py --song shitsurengo --force-audio
+    python3 tools/build_osz.py --song shitsurengo --output /tmp/a.osz
 
 ビルド時に検証すること（不備を .osz に混入させないための門番）:
-    * .osz 内の音源が1つだけ（全譜面が同じ音源を参照）か ← 上記の非対応構成を防ぐ
+    * 1倍速/2倍速それぞれの音源が揃い、各譜面の AudioFilename が自分の速度を指すか
+    * 1倍速のファイル名が 2倍速より前に並ぶか ← 上記「セットの曲」誤選択を防ぐ
     * メタデータ / モード / 背景 / 参照音源が正しいか
     * .osu に不可視文字・制御文字が混ざっていないか
     * 4K として不正なノーツ（同時刻重複 / レーン中央でない座標 / LN の長さ / 0件）が無いか
@@ -54,8 +64,8 @@ SONGS = {
         'diffs': [('easy.osu', 'Easy'), ('normal.osu', 'Normal'), ('hard.osu', 'Hard')],
         'audio': '失恋後.mp3',
         'bg': 'サムネイル.png',
-        'audio_2x': '失恋後 (2x).mp3',
-        'suffix_2x': '(2x)',
+        'audio_2x': '失恋後_x2.mp3',
+        'suffix_2x': '_x2',
     },
     'shitsurirongo': {
         'dir': '失理論後',
@@ -63,8 +73,8 @@ SONGS = {
         'diffs': [('easy.osu', 'Easy'), ('normal.osu', 'Normal'), ('hard.osu', 'Hard')],
         'audio': '失理論後.mp3',
         'bg': 'サムネイル.png',
-        'audio_2x': '失理論後 (2x).mp3',
-        'suffix_2x': '(2x)',
+        'audio_2x': '失理論後_x2.mp3',
+        'suffix_2x': '_x2',
     },
 }
 
@@ -488,82 +498,85 @@ def _audio_needs_build(audio_2x_path: pathlib.Path, src: pathlib.Path) -> bool:
     return src.stat().st_mtime > audio_2x_path.stat().st_mtime + 60
 
 
-def archive_name(song_key: str, speed: int) -> str:
-    """出力ファイル名。1倍速は <song_key>.osz、2倍速は <song_key>_2x.osz。"""
-    return f'{song_key}.osz' if speed == 1 else f'{song_key}_2x.osz'
+def archive_name(song_key: str) -> str:
+    """出力ファイル名（1曲 = 1ファイル、1倍速と2倍速の全譜面入り）。"""
+    return f'{song_key}.osz'
 
 
-def build_song(song_key: str, speed: int = 1, keep_audio: bool = False,
+def build_song(song_key: str, keep_audio: bool = False,
                output: pathlib.Path | None = None, force_audio: bool = False) -> dict:
-    """1曲・1速度ぶんの .osz を作る。
+    """1曲ぶんの .osz（1倍速3譜面 + 2倍速3譜面 + 音源2つ）を作る。
 
-    1つの beatmapset に音源を2つ入れるのは osu! では非対応（上記 docstring）なので、
-    1倍速と2倍速は別の .osz に分ける。1倍速のビルドには音源の依存パッケージは不要。
+    各譜面は [General] の AudioFilename で自分の速度の音源を指す。
+    1倍速のファイル名が 2倍速より先に並ぶようにしてある（osu! がセットの曲として
+    使う音源が 2倍速＝半分の長さにならないように。モジュール docstring 参照）。
     """
-    if speed not in (1, 2):
-        raise SystemExit(f'speed は 1 か 2 です: {speed}')
     cfg = SONGS[song_key]
     song_dir = ROOT / 'songs' / cfg['dir']
     keys = cfg['keys']
-    audio = cfg['audio'] if speed == 1 else cfg['audio_2x']
-    bg = cfg['bg']
-    suffix_2x = cfg['suffix_2x']
-    output = pathlib.Path(output) if output else ROOT / archive_name(song_key, speed)
+    audio_1x, audio_2x = cfg['audio'], cfg['audio_2x']
+    bg, suffix_2x = cfg['bg'], cfg['suffix_2x']
+    output = pathlib.Path(output) if output else ROOT / archive_name(song_key)
 
-    for name in (cfg['audio'], cfg['audio_2x'], bg, *(src for src, _ in cfg['diffs'])):
+    for name in (audio_1x, audio_2x, bg, *(src for src, _ in cfg['diffs'])):
         if not (song_dir / name).is_file():
             raise SystemExit(f'必要なファイルがありません: {song_dir / name}')
 
-    # 2倍速のときだけ 2倍速音源を用意する（1倍速のビルドは依存ゼロで通る）
-    if speed == 2:
-        audio_2x_path = song_dir / cfg['audio_2x']
-        if keep_audio or (not force_audio
-                          and not _audio_needs_build(audio_2x_path, song_dir / cfg['audio'])):
-            print(f'  2x audio: 既存の {cfg["audio_2x"]} を使用'
-                  '（1x を更新した場合は --force-audio で作り直してください）')
-        else:
-            make_2x_audio(song_dir / cfg['audio'], audio_2x_path)
+    # 2倍速音源（1倍速を2サンプルずつ間引いたもの=速度+ピッチが Web の 2.0x と同じ）
+    audio_2x_path = song_dir / audio_2x
+    if keep_audio or (not force_audio
+                      and not _audio_needs_build(audio_2x_path, song_dir / audio_1x)):
+        print(f'  2x audio: 既存の {audio_2x} を使用'
+              '（1x を更新した場合は --force-audio で作り直してください）')
+    else:
+        make_2x_audio(song_dir / audio_1x, audio_2x_path)
 
-    audio_s = mp3_duration(song_dir / audio)
-    audio_ms = audio_s * 1000 if audio_s else None
-    if audio_ms is None:
-        print(f'  ! {audio} の長さが読めませんでした（音源との突き合わせ検証を省略）')
+    durations = {name: mp3_duration(song_dir / name) for name in (audio_1x, audio_2x)}
+    for name, dur in durations.items():
+        if dur is None:
+            print(f'  ! {name} の長さが読めませんでした（音源との突き合わせ検証を省略）')
 
     entries: list[tuple[str, bytes]] = []
-    expected: dict[str, str] = {}
+    expected: dict[str, str] = {}      # Version -> その譜面が参照する音源
     summaries: list[str] = []
     chart_files: list[str] = []
     artist = title = None
 
-    for src, version in cfg['diffs']:
-        text = (song_dir / src).read_text(encoding='utf-8')
-        version = version if speed == 1 else f'{version} {suffix_2x}'
-        info_1x = parse_osu(text)
-        if speed == 2:
-            text = to_2x_osu(text, version, audio)
-            info = parse_osu(text)
-            if (info['notes'], info['ln']) != (info_1x['notes'], info_1x['ln']):
-                raise SystemExit(f'[{version}] ノーツ数が一致しません: '
-                                 f'{info["notes"]}/{info["ln"]} vs '
-                                 f'{info_1x["notes"]}/{info_1x["ln"]}')
-            if (info['times'] != [h2(t) for t in info_1x['times']]
-                    or info['ln_ends'] != [h2(t) for t in info_1x['ln_ends']]):
-                raise SystemExit(f'[{version}] ノーツ時間が元の半分になっていません')
-        else:
-            info = info_1x
-        check(info, version, {audio, bg}, audio, bg, keys, audio_ms)
-        meta = info['meta']
-        artist = meta.get('ArtistUnicode') or meta.get('Artist', '')
-        title = meta.get('TitleUnicode') or meta.get('Title', '')
+    def add_charts(speed: int, audio: str, diffs: list[tuple[str, str]]) -> None:
+        """難易度ぶんの .osu を entries に足す（speed=2 では時間を半分にしたもの）。"""
+        nonlocal artist, title
+        audio_ms = durations[audio] * 1000 if durations[audio] else None
+        for src, version in diffs:
+            text = (song_dir / src).read_text(encoding='utf-8')
+            info_1x = parse_osu(text)
+            if speed == 2:
+                text = to_2x_osu(text, version, audio)
+                info = parse_osu(text)
+                if (info['notes'], info['ln']) != (info_1x['notes'], info_1x['ln']):
+                    raise SystemExit(f'[{version}] ノーツ数が一致しません: '
+                                     f'{info["notes"]}/{info["ln"]} vs '
+                                     f'{info_1x["notes"]}/{info_1x["ln"]}')
+                if (info['times'] != [h2(t) for t in info_1x['times']]
+                        or info['ln_ends'] != [h2(t) for t in info_1x['ln_ends']]):
+                    raise SystemExit(f'[{version}] ノーツ時間が元の半分になっていません')
+            else:
+                info = info_1x
+            check(info, version, {audio_1x, audio_2x, bg}, audio, bg, keys, audio_ms)
+            meta = info['meta']
+            artist = meta.get('ArtistUnicode') or meta.get('Artist', '')
+            title = meta.get('TitleUnicode') or meta.get('Title', '')
+            arcname = chart_arcname(meta, version)
+            entries.append((arcname, text.encode('utf-8')))
+            summaries.append(summary_line(version, info, arcname))
+            chart_files.append(arcname)
+            expected[version] = audio
 
-        arcname = chart_arcname(meta, version)
-        entries.append((arcname, text.encode('utf-8')))
-        summaries.append(summary_line(version, info, arcname))
-        chart_files.append(arcname)
-        expected[version] = audio
-
-    entries.append((audio, (song_dir / audio).read_bytes()))
+    # 「1倍速の譜面 → 1倍速の音源 → 背景 → 2倍速の譜面 → 2倍速の音源」の順に入れる
+    add_charts(1, audio_1x, list(cfg['diffs']))
+    entries.append((audio_1x, (song_dir / audio_1x).read_bytes()))
     entries.append((bg, (song_dir / bg).read_bytes()))
+    add_charts(2, audio_2x, [(src, f'{v}{suffix_2x}') for src, v in cfg['diffs']])
+    entries.append((audio_2x, (song_dir / audio_2x).read_bytes()))
 
     write_zip(output, entries)
 
@@ -571,32 +584,60 @@ def build_song(song_key: str, speed: int = 1, keep_audio: bool = False,
     with zipfile.ZipFile(output) as zf:
         bad = zf.testzip()
         assert bad is None, f'zip が壊れています: {bad}'
-        versions = set()
         names = set(zf.namelist())
-        # osu! は 1 set 1 音源。複数の音源を入れると難易度に別の音源が割り当たる
+        charts: dict[str, str] = {}    # .osu ファイル名 -> 参照している音源
+        for name in sorted(names):
+            if not name.endswith('.osu'):
+                continue
+            if '/' in name:
+                raise SystemExit(f'.osz 内にフォルダがあります: {name}（フラット構成にしてください）')
+            info3 = parse_osu(zf.read(name).decode('utf-8'))
+            version3 = info3['meta']['Version']
+            audio3 = info3['general']['AudioFilename']
+            audio_ms = durations[audio3] * 1000 if durations.get(audio3) else None
+            check(info3, version3, names, expected[version3], bg, keys, audio_ms)
+            charts[name] = audio3
+        assert set(expected) == {parse_osu(zf.read(n).decode('utf-8'))['meta']['Version']
+                                 for n in names if n.endswith('.osu')}, \
+            f'期待された難易度: {set(expected)}'
+
+        # 音源は2つ。1倍速のものが先に並ぶこと（osu! はセットの曲情報に
+        # 「先に並ぶ音源」を使うため、逆になると 1倍速が半分の長さになる）
         audios = sorted(n for n in names
                         if n.lower().endswith(('.mp3', '.ogg', '.wav', '.m4a', '.flac')))
-        if audios != [audio]:
-            raise SystemExit('.osz 内の音源が1つではありません: '
-                             f'{audios}（1 set 1 音源にしてください）')
-        for name in zf.namelist():
-            if name.endswith('.osu'):
-                if '/' in name:
-                    raise SystemExit(f'.osz 内にフォルダがあります: {name}（フラット構成にしてください）')
-                info3 = parse_osu(zf.read(name).decode('utf-8'))
-                version3 = info3['meta']['Version']
-                versions.add(version3)
-                check(info3, version3, names, expected[version3], bg, keys, audio_ms)
-        assert versions == set(expected), f'期待された難易度: {set(expected)}, 実際: {versions}'
+        if audios != sorted([audio_1x, audio_2x]):
+            raise SystemExit(f'.osz 内の音源が想定と違います: {audios} '
+                             f'（{audio_1x} と {audio_2x} のはず）')
+        if audios[0] != audio_1x:
+            raise SystemExit(f'音源の並び順が逆です: {audios} '
+                             f'（1倍速 {audio_1x} が先に並ぶ必要があります）')
+
+        # 各譜面が自分の速度の音源を指しているか / 1倍速の譜面名が先に並ぶか
+        x1 = sorted(n for n, a in charts.items() if a == audio_1x)
+        x2 = sorted(n for n, a in charts.items() if a == audio_2x)
+        if len(x1) != len(cfg['diffs']) or len(x2) != len(cfg['diffs']):
+            raise SystemExit(f'譜面の音源の割り当てが不正です: 1倍速 {x1} / 2倍速 {x2}')
+        # 最初に並ぶ譜面が 1倍速を参照しているか（osu! はセットの曲情報を
+        # 「最初の譜面が参照する音源」から取ることがある）
+        first_chart = min(charts)
+        if charts[first_chart] != audio_1x:
+            raise SystemExit(f'最初に並ぶ譜面が2倍速の音源を参照しています: {first_chart}')
+        # 「Easy」より「Easy_x2」が後に並ぶか（同難易度の1倍速/2倍速の並び）
+        for name, audio in charts.items():
+            if audio != audio_2x:
+                continue
+            twin = name.replace(f'{suffix_2x}]', ']')
+            if twin in charts and not twin < name:
+                raise SystemExit(f'譜面ファイルの並び順が逆です: {name} が {twin} より前に並びます')
 
     size_mb = output.stat().st_size / 1_000_000
-    print(f'{title} / {artist} — {speed}倍速 {len(cfg["diffs"])}譜面の .osz を作成しました')
+    print(f'{title} / {artist} — 1倍速 + 2倍速 {len(cfg["diffs"]) * 2}譜面の .osz を作成しました')
     print('\n'.join(summaries))
-    print(f'  + audio: {audio} / background: {bg}')
+    print(f'  + audio: {audio_1x} (1倍速) / {audio_2x} (2倍速) / background: {bg}')
     print(f'-> {output} ({size_mb:.2f} MB, {len(entries)} files)')
     return {'entries': entries, 'chart_files': chart_files, 'summary': summaries,
             'versions': expected, 'size': output.stat().st_size, 'output': output,
-            'speed': speed, 'audio': audio}
+            'audio': audio_1x, 'audio_2x': audio_2x}
 
 
 def main() -> int:
@@ -604,10 +645,8 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--song', type=str, choices=list(SONGS.keys()),
                     help='ビルドする曲を指定 (省略時は全曲)')
-    ap.add_argument('--speed', type=str, choices=('1', '2', 'all'), default='all',
-                    help='ビルドする速度 (既定: all = 1倍速と2倍速の両方)')
     ap.add_argument('--output', type=pathlib.Path,
-                    help='出力先 .osz (--song と --speed を指定したときのみ)')
+                    help='出力先 .osz (--song を指定したときのみ)')
     ap.add_argument('--keep-audio', action='store_true',
                     help='2倍速音源を再生成せず既存のものを使う')
     ap.add_argument('--force-audio', action='store_true',
@@ -615,15 +654,13 @@ def main() -> int:
     args = ap.parse_args()
 
     keys = [args.song] if args.song else list(SONGS.keys())
-    speeds = (1, 2) if args.speed == 'all' else (int(args.speed),)
-    if args.output and len(keys) * len(speeds) > 1:
-        raise SystemExit('--output は --song と --speed を指定したときのみ使えます')
+    if args.output and len(keys) > 1:
+        raise SystemExit('--output は --song を指定したときのみ使えます')
 
     for key in keys:
-        for speed in speeds:
-            build_song(key, speed=speed, keep_audio=args.keep_audio,
-                       output=args.output, force_audio=args.force_audio)
-            print()
+        build_song(key, keep_audio=args.keep_audio,
+                   output=args.output, force_audio=args.force_audio)
+        print()
 
     print('ビルドが完了しました。')
     return 0
