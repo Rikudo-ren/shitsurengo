@@ -80,6 +80,13 @@ Combo1 : 255,192,0
 SONG_KEYS = sorted(build_osz.SONGS)
 
 
+def first_bpm(info: dict) -> float:
+    """最初の BPM 行（beatLength > 0）から BPM を求める。"""
+    red = [bl for _, bl in info['timing'] if bl > 0]
+    assert red, 'BPM 行がありません'
+    return 60000 / red[0]
+
+
 class Helpers(unittest.TestCase):
     def test_h2_rounding(self):
         self.assertEqual(build_osz.h2(1095), 548)
@@ -120,8 +127,21 @@ class To2xOsuTest(unittest.TestCase):
         self.assertIn("AudioLeadIn: 0", self.out)
         self.assertIn("Bookmarks:-165000,500", self.out)
 
-    def test_timing_point_halved_beat_length_kept(self):
-        self.assertIn("548,357.14285714285717,4,2,-1,100,1,0", self.out)
+    def test_timing_point_bpm_doubled_with_sv_line(self):
+        """BPM 表示は実際の速さ（2倍）にし、SV 0.5 で見た目の速度を 1倍速に揃える。"""
+        self.assertIn("548,178.57142857142858,4,2,-1,100,1,0", self.out)  # 336 BPM
+        self.assertIn("548,-200,4,2,-1,100,0,0", self.out)                # SV 0.5
+        self.assertIn("0,-200,4,2,-1,100,0,0", self.out)                  # 最初から効かせる
+        # 赤線（BPM）には必ず緑線（SV）が同じ時刻に付く
+        for line in self.out.split("[TimingPoints]")[1].split("\n\n")[0].strip().splitlines():
+            fields = line.split(',')
+            if float(fields[1]) > 0:
+                self.assertIn(f'{fields[0]},-200,4,2,-1,100,0,0', self.out)
+
+    def test_scroll_speed_matches_1x(self):
+        """1秒あたりの移動量 ∝ BPM × SV が 1倍速と揃っていること。"""
+        orig = build_osz.parse_osu(SAMPLE)
+        self.assertAlmostEqual(first_bpm(orig), first_bpm(self.info) * build_osz.SV_2X)
 
     def test_notes_halved_with_ln_end(self):
         lines = self.out.split("[HitObjects]")[1].strip().splitlines()
@@ -318,6 +338,42 @@ class SingleOszBothSpeedsTest(unittest.TestCase):
                     | {cfg['bg'], cfg['audio'], cfg['audio_2x']})
                 for name in arc['names']:
                     self.assertNotIn('/', name)   # フォルダを作らない
+
+    def test_2x_charts_keep_the_1x_scroll_speed(self):
+        """2倍速は BPM 2倍 + SV 0.5 = 見た目の速度は 1倍速と同じ（密度だけ2倍）。"""
+        for key in SONG_KEYS:
+            cfg = build_osz.SONGS[key]
+            arc = self.archive[key]
+            with self.subTest(song=key):
+                for _, version in cfg['diffs']:
+                    text = arc['texts'][f'{version}{cfg["suffix_2x"]}']
+                    section = text.split('[TimingPoints]')[1].split('\n\n')[0]
+                    bpm = [l for l in section.strip().splitlines() if float(l.split(',')[1]) > 0]
+                    sv = [l for l in section.strip().splitlines() if float(l.split(',')[1]) < 0]
+                    self.assertTrue(bpm and sv, 'BPM行とSV行の両方があること')
+                    self.assertEqual(set(sv), {f'0,-200,4,2,-1,100,0,0'}
+                                     | {f'{l.split(",")[0]},-200,4,2,-1,100,0,0' for l in bpm})
+                    # 1倍速の BPM × SV 1.0 = 2倍速の BPM × SV 0.5（見た目の速さが同じ）
+                    one = arc['charts'][version]
+                    two = arc['charts'][f'{version}{cfg["suffix_2x"]}']
+                    self.assertAlmostEqual(first_bpm(one) * 1.0,
+                                           first_bpm(two) * build_osz.SV_2X)
+
+    def test_1x_charts_sort_before_2x_even_with_loose_comparison(self):
+        """'.' や '（）' を無視する比較（カルチャ依存の並べ替え）でも 1倍速が先。"""
+        for key in SONG_KEYS:
+            cfg = build_osz.SONGS[key]
+            arc = self.archive[key]
+            with self.subTest(song=key):
+                key1 = build_osz.loose_key(cfg['audio'])
+                key2 = build_osz.loose_key(cfg['audio_2x'])
+                self.assertLess(key1, key2)
+                names = [n for n in arc['names'] if n.endswith('.osu')]
+                for _, version in cfg['diffs']:
+                    one = [n for n in names if n.endswith(f'[{version}].osu')][0]
+                    two = [n for n in names
+                           if n.endswith(f'[{version}{cfg["suffix_2x"]}].osu')][0]
+                    self.assertLess(build_osz.loose_key(one), build_osz.loose_key(two))
 
     def test_every_chart_points_at_its_own_speed_audio(self):
         for key in SONG_KEYS:

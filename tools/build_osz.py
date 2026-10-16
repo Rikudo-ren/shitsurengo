@@ -65,7 +65,7 @@ SONGS = {
         'audio': '失恋後.mp3',
         'bg': 'サムネイル.png',
         'audio_2x': '失恋後_x2.mp3',
-        'suffix_2x': '_x2',
+        'suffix_2x': '（x2）',
     },
     'shitsurirongo': {
         'dir': '失理論後',
@@ -74,7 +74,7 @@ SONGS = {
         'audio': '失理論後.mp3',
         'bg': 'サムネイル.png',
         'audio_2x': '失理論後_x2.mp3',
-        'suffix_2x': '_x2',
+        'suffix_2x': '（x2）',
     },
 }
 
@@ -82,6 +82,16 @@ MP3_BITRATES = (32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320)
 
 # 打鍵音の統一先（tools/normalize_osu.py と揃える）: soft / 音量 50
 SAMPLE = '2:2:0:50:'
+
+# 2倍速譜面の見た目のスクロール速度を 1倍速と揃えるための SV。
+# BPM は2倍（beatLength 半分）で表示を実際の速さに合わせ、SV 0.5 で
+# 1秒あたりの移動量を 1倍速と同じにする。
+SV_2X = 0.5
+
+
+def _sv_line_value() -> str:
+    """継承行（緑線）の beatLength。SV_2X のとき -200 になる。"""
+    return str(int(-100 / SV_2X))
 
 # osu! が読み飛ばしてしまう不可視文字・制御文字
 INVISIBLE = re.compile(
@@ -226,6 +236,7 @@ def mp3_duration(path: pathlib.Path) -> float | None:
 
 def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
     out: list[str] = []
+    timing_started = False
     sec = ''
     for line in text.splitlines():
         stripped = line.strip()
@@ -233,6 +244,17 @@ def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
             sec = stripped
             out.append(line)
             continue
+
+        if sec == '[TimingPoints]' and not timing_started:
+            timing_started = True
+            fields = [f.strip() for f in line.split(',')]
+            if len(fields) >= 2 and float(fields[1]) > 0:
+                # 最初の BPM 行より前にもノーツがある譜面があるため、SV を 0 から効かせる
+                green0 = ['0', _sv_line_value()] + fields[2:6]
+                while len(green0) < 6:
+                    green0.append('100')
+                green0 += ['0', '0']    # inherited, effects
+                out.append(','.join(green0))
 
         if sec == '[General]':
             m = re.match(r'(AudioFilename)\s*:\s*(.*?)\s*$', line)
@@ -269,6 +291,21 @@ def to_2x_osu(text: str, version: str, audio_2x: str) -> str:
             parts = line.split(',')
             if len(parts) >= 2:
                 parts[0] = str(h2(float(parts[0])))
+                if float(parts[1]) > 0:
+                    # BPM 行。時間だけでなく beatLength も半分にして BPM 表示を
+                    # 実際の速さ（2倍）に合わせ、直後に SV 0.5 の緑線を置く。
+                    # これで見た目のスクロール速度は 1倍速と揃い、ノーツだけが
+                    # 2倍の密度で降ってくる（SV を入れないと表示も流れる速さも2倍）。
+                    parts[1] = repr(float(parts[1]) / 2)
+                    out.append(','.join(parts))
+                    # 継承（緑）行: 先頭に SV 0.5 (= -100/0.5) を置く
+                    green = list(parts)
+                    green[1] = _sv_line_value()
+                    while len(green) < 7:
+                        green.append('0')
+                    green[6] = '0'      # inherited
+                    out.append(','.join(green))
+                    continue
                 out.append(','.join(parts))
                 continue
 
@@ -498,6 +535,16 @@ def _audio_needs_build(audio_2x_path: pathlib.Path, src: pathlib.Path) -> bool:
     return src.stat().st_mtime > audio_2x_path.stat().st_mtime + 60
 
 
+def loose_key(name: str) -> str:
+    """句読点・記号・空白を無視した比較キー。
+
+    ファイル名の並べ替えがカルチャ依存（'.' や '（）' を無視する比較）でも
+    1倍速が先に並ぶことを確かめるために使う。
+    """
+    return ''.join(c for c in name
+                   if unicodedata.category(c)[0] not in ('P', 'S', 'Z')).lower()
+
+
 def archive_name(song_key: str) -> str:
     """出力ファイル名（1曲 = 1ファイル、1倍速と2倍速の全譜面入り）。"""
     return f'{song_key}.osz'
@@ -559,6 +606,19 @@ def build_song(song_key: str, keep_audio: bool = False,
                 if (info['times'] != [h2(t) for t in info_1x['times']]
                         or info['ln_ends'] != [h2(t) for t in info_1x['ln_ends']]):
                     raise SystemExit(f'[{version}] ノーツ時間が元の半分になっていません')
+                # BPM は2倍（表示を実際の速さに合わせる）+ 各 BPM 行に SV_2X の緑線
+                # （見た目のスクロール速度を 1倍速に揃える）
+                red_1x = [(t, bl) for t, bl in info_1x['timing'] if bl > 0]
+                red_2x = [(t, bl) for t, bl in info['timing'] if bl > 0]
+                if [(h2(t), bl / 2) for t, bl in red_1x] != red_2x:
+                    raise SystemExit(f'[{version}] BPM が 1倍速の2倍になっていません')
+                sv_want = -100 / SV_2X
+                greens = {t for t, bl in info['timing'] if bl < 0}
+                need = {0.0} | {float(t) for t, _ in red_2x}
+                if greens != need or any(bl != sv_want
+                                         for _, bl in info['timing'] if bl < 0):
+                    raise SystemExit(f'[{version}] SV {SV_2X} の緑線が BPM 行に'
+                                     f'揃っていません: {sorted(greens)}')
             else:
                 info = info_1x
             check(info, version, {audio_1x, audio_2x, bg}, audio, bg, keys, audio_ms)
@@ -622,13 +682,21 @@ def build_song(song_key: str, keep_audio: bool = False,
         first_chart = min(charts)
         if charts[first_chart] != audio_1x:
             raise SystemExit(f'最初に並ぶ譜面が2倍速の音源を参照しています: {first_chart}')
-        # 「Easy」より「Easy_x2」が後に並ぶか（同難易度の1倍速/2倍速の並び）
+        if not loose_key(audio_1x) < loose_key(audio_2x):
+            raise SystemExit('音源の並び順が逆です（記号を無視した比較でも 1倍速が先に'
+                             f'並ぶ必要があります）: {[audio_1x, audio_2x]}')
+        # 「Easy」より「Easy（x2）」が後に並ぶか（同難易度の1倍速/2倍速の並び）
         for name, audio in charts.items():
             if audio != audio_2x:
                 continue
             twin = name.replace(f'{suffix_2x}]', ']')
-            if twin in charts and not twin < name:
+            if twin not in charts:
+                continue
+            if not twin < name:
                 raise SystemExit(f'譜面ファイルの並び順が逆です: {name} が {twin} より前に並びます')
+            if not loose_key(twin) < loose_key(name):
+                raise SystemExit(f'譜面ファイルの並び順が逆です（記号を無視した比較）: '
+                                 f'{name} が {twin} より前に並びます')
 
     size_mb = output.stat().st_size / 1_000_000
     print(f'{title} / {artist} — 1倍速 + 2倍速 {len(cfg["diffs"]) * 2}譜面の .osz を作成しました')
